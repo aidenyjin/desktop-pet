@@ -387,9 +387,26 @@ function settingsBody(app: AppContext, api: ModalApi, extra: { autostart: boolea
           "div",
           { class: "setting-label" },
           h("span", { class: listening ? "status-ok" : "status-warn" }, listening ? "Counting keystrokes everywhere" : "Only counting keys typed here"),
-          h("small", null, listening ? "Only the count is kept — never which keys." : "Allow Input Monitoring so the composer hears you work."),
+          h(
+            "small",
+            null,
+            listening
+              ? "Only the count is kept — never which keys."
+              : app.permission === "denied"
+                ? "Already switched on in System Settings? macOS sometimes only notices after a full quit and reopen."
+                : "Allow Input Monitoring so the composer hears you work.",
+          ),
         ),
-        listening ? null : h("button", { class: "btn is-small", onClick: () => app.requestListening(() => api.refresh()) }, "Allow"),
+        listening
+          ? null
+          : h(
+              "div",
+              { class: "setting-actions" },
+              h("button", { class: "btn is-small", onClick: () => app.requestListening(() => api.refresh()) }, "Allow"),
+              app.permission === "denied" && app.bridge.isTauri
+                ? h("button", { class: "btn is-small is-quiet", onClick: () => void app.bridge.relaunch() }, "Relaunch")
+                : null,
+            ),
       ),
     );
   }

@@ -743,6 +743,12 @@ body.in-browser .card {
 .setting + .setting {
   border-top: 1px solid rgba(var(--ink-rgb), 0.18);
 }
+.setting-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
 .setting-label small {
   display: block;
   font-size: 12px;
