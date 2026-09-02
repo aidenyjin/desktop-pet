@@ -1,0 +1,79 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Sonatina",
+  "version": "0.1.0",
+  "identifier": "com.aidenyjin.sonatina",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Sonatina",
+        "url": "index.html",
+        "width": 396,
+        "height": 512,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "closable": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "visible": false,
+        "focus": false,
+        "skipTaskbar": true,
+        "acceptFirstMouse": true,
+        "visibleOnAllWorkspaces": true,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": false,
+    "targets": [
+      "app",
+      "dmg"
+    ],
+    "category": "Entertainment",
+    "copyright": "© 2026 Aiden Jin. MIT licensed.",
+    "shortDescription": "A little composer for your menu bar",
+    "longDescription": "Sonatina is a tiny desktop companion who writes music while you work. Every keystroke you type moves their piece forward.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/64x64.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.png"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "dmg": {
+        "appPosition": {
+          "x": 180,
+          "y": 170
+        },
+        "applicationFolderPosition": {
+          "x": 480,
+          "y": 170
+        },
+        "windowSize": {
+          "width": 660,
+          "height": 400
+        }
+      }
+    }
+  }
+}
