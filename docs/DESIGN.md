@@ -47,27 +47,30 @@ keystroke ──▶ notes (× tempo) ──▶ piece progress ──▶ premiere
 | # | Form      | Notes   | Base payout | Needs ambition |
 |---|-----------|---------|-------------|----------------|
 | 1 | Bagatelle | 500     | $500        | 1 |
-| 2 | Étude     | 2,000   | $2,400      | 2 |
-| 3 | Nocturne  | 6,000   | $8,400      | 3 |
-| 4 | Sonata    | 15,000  | $24,000     | 4 |
-| 5 | Concerto  | 40,000  | $72,000     | 5 |
-| 6 | Symphony  | 100,000 | $200,000    | 6 |
-| 7 | Opera     | 250,000 | $625,000    | 7 |
+| 2 | Étude     | 2,500   | $2,500      | 2 |
+| 3 | Nocturne  | 8,000   | $9,000      | 3 |
+| 4 | Sonata    | 25,000  | $30,000     | 4 |
+| 5 | Concerto  | 70,000  | $90,000     | 5 |
+| 6 | Symphony  | 180,000 | $250,000    | 6 |
+| 7 | Opera     | 450,000 | $700,000    | 7 |
 
-Payout = base × artistry multiplier × reception (0.88–1.18, biased upward by
+Payout = base × artistry multiplier × reception (0.88–1.18, skewed upward by
 artistry). The reception also picks a line of flavour text for the premiere.
+Notes written past the end of a piece go into "the drawer" and are applied to
+the next piece (never enough to finish it outright).
 
 ### Upgrades
 
-| Upgrade   | Effect                                  | Cost curve                 |
-|-----------|-----------------------------------------|----------------------------|
-| Tempo     | notes per keystroke = level             | 50 · 2.2^(L‑1)             |
-| Artistry  | payout × (1 + 0.5·(L‑1))                | 100 · 2.4^(L‑1)            |
-| Ambition  | unlocks form L                          | 30 % of that form's payout |
+| Upgrade   | Effect                                      | Cost                                 |
+|-----------|---------------------------------------------|--------------------------------------|
+| Tempo     | notes per keystroke = bpm / 60; Adagio (60) → Prestissimo (200) in 8 marks | 100, 250, 600, 1.5k, 4k, 10k, 25k |
+| Artistry  | payout × (1 + 0.15·(L‑1)), warmer receptions | 200 · 2.5^(L‑1), rounded          |
+| Ambition  | unlocks form L+1                            | 1.5 × payout of the current largest  |
 
-A day of ordinary computer use is roughly 10–20k keystrokes. Targets:
-first premiere within the first hour, a sonata inside the first week, a
-symphony in a month of regular work. `scripts/simulate.ts` checks this.
+A day of ordinary computer use is roughly 10–20k keystrokes. With 15k a day
+the simulation (`npm run simulate`) reaches a sonata on day 2, a concerto on
+day 4, a symphony around day 10 and an opera in about three weeks; at 6k a
+day those land on days 5, 11, 26 and 54.
 
 ### Renown
 
