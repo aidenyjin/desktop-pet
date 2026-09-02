@@ -25,6 +25,13 @@ try {
     ["premiere-dusk", "mood=premiere&hour=19&frames=25"],
     ["idle-night-inverted", "mood=idle&hour=2&ink=%23b6c1b5&paper=%232a2725"],
     ["playing-rain-day", "mood=playing&hour=11&rate=2&bpm=92&notes=4&frames=30&rainday=1"],
+    ["thinking", "mood=thinking&hour=15&frames=20"],
+    ["wear-30", "mood=idle&hour=14&wear=30"],
+    ["wear-60-stutter", "mood=playing&hour=14&rate=3&bpm=92&wear=60&frames=150"],
+    ["wear-85", "mood=idle&hour=14&wear=85"],
+    ["wear-broken", "mood=playing&hour=14&rate=3&bpm=92&wear=100&frames=10"],
+    ["jolt", "mood=playing&hour=14&wear=100&jolt=1&frames=3"],
+    ["sparkle-repair", "mood=idle&hour=14&wear=0&sparkle=1&frames=8"],
   ];
   for (const [name, qs] of states) {
     await page.goto(`http://localhost:1421/dev/scene.html?${qs}`);

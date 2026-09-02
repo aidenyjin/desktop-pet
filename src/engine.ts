@@ -8,6 +8,10 @@ import { applyKeys, type GameEvent } from "./game/state";
 import { tempoBpm } from "./game/economy";
 import type { Scene, Mood } from "./scene/scene";
 
+const IDLE_AFTER_S = 1.8;
+const DOZE_AFTER_S = 120;
+const PREMIERE_S = 3.2;
+
 export interface EngineHooks {
   onEvents(events: GameEvent[]): void;
   onKeys(n: number): void;
@@ -15,9 +19,6 @@ export interface EngineHooks {
 
 const POLL_VISIBLE_MS = 150;
 const POLL_HIDDEN_MS = 1000;
-const IDLE_AFTER_S = 1.8;
-const DOZE_AFTER_S = 120;
-const PREMIERE_S = 3.2;
 
 export class Engine {
   private timer: number | undefined;
@@ -81,20 +82,31 @@ export class Engine {
         this.store.update((s) => ({ ...s, keysConsumed: total }));
         delta = 0;
       }
-      if (delta > 0 && state.onboarded) {
-        const t = applyKeys(state, delta, Date.now());
-        this.store.update(() => t.state, { immediate: t.events.some((e) => e.type === "premiere") });
-        this.lastKeyAt = now / 1000;
-        this.hooks.onKeys(delta);
-        if (t.events.length) this.hooks.onEvents(t.events);
-        if (t.events.some((e) => e.type === "premiere")) this.premiereAt = now / 1000;
-        if (this.visible) this.scene.emitNotes(delta);
-      }
-      // Exponential moving average of the typing rate.
-      const instant = delta / dt;
+      // Exponential moving average of the typing rate — updated before
+      // applyKeys so piano wear reacts to a *sustained* pace, not this
+      // single tick's instantaneous (and often bursty) sample. Capped so
+      // one huge one-off batch (a catch-up after the panel was hidden, a
+      // test harness fast-forwarding) can't spike it on its own — only a
+      // pace held across several ticks actually raises the average.
+      const instant = Math.min(60, delta / dt);
       const alpha = 1 - Math.exp(-dt / 1.2);
       this.rate += (instant - this.rate) * alpha;
       if (this.rate < 0.05) this.rate = 0;
+
+      if (delta > 0 && state.onboarded) {
+        const t = applyKeys(state, delta, Date.now(), Math.random, dt, this.rate);
+        this.store.update(() => t.state, { immediate: t.events.some((e) => e.type === "premiere") });
+        const wasted = t.events.some((e) => e.type === "wasted");
+        // A jammed piano still means you're at the keys, not away thinking.
+        if (!wasted) this.lastKeyAt = now / 1000;
+        this.hooks.onKeys(delta);
+        if (t.events.length) this.hooks.onEvents(t.events);
+        if (t.events.some((e) => e.type === "premiere")) this.premiereAt = now / 1000;
+        if (this.visible) {
+          if (wasted) this.scene.jolt();
+          else this.scene.emitNotes(delta);
+        }
+      }
       this.consecutiveErrors = 0;
     } catch (e) {
       this.consecutiveErrors++;
@@ -114,11 +126,12 @@ export class Engine {
     const state = this.store.get();
     let mood: Mood;
     if (nowS - this.premiereAt < PREMIERE_S) mood = "premiere";
+    else if (state.thinkingSince !== null) mood = "thinking";
     else if (nowS - this.lastKeyAt < IDLE_AFTER_S) mood = "playing";
     else if (nowS - this.lastKeyAt > DOZE_AFTER_S || this.lastKeyAt === -Infinity) mood = "dozing";
     else mood = "idle";
     if (!state.current && mood === "playing") mood = "idle";
-    this.scene.setView({ mood, typingRate: this.rate, tempoBpm: tempoBpm(state.upgrades.tempo) });
+    this.scene.setView({ mood, typingRate: this.rate, tempoBpm: tempoBpm(state.upgrades.tempo), wear: state.pianoWear });
   }
 
   /** A fresh session starts the composer awake, not dozing. */

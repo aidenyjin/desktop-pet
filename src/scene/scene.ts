@@ -5,12 +5,13 @@
 import * as S from "./sprites";
 import { skyAt, type SkyState } from "./sky";
 import { mulberry32 } from "../game/rng";
+import { WEAR_BROKEN_AT, WEAR_STUTTER_AT } from "../game/economy";
 
 export const SCENE_W = 180;
 export const SCENE_H = 100;
 const FLOOR_Y = 86;
 
-export type Mood = "idle" | "playing" | "dozing" | "premiere";
+export type Mood = "idle" | "playing" | "dozing" | "premiere" | "thinking";
 
 export interface SceneView {
   mood: Mood;
@@ -20,10 +21,12 @@ export interface SceneView {
   ink: string;
   paper: string;
   reduceMotion: boolean;
+  /** 0 (pristine) – 100 (jammed). Shows as cracks; see economy.ts thresholds. */
+  wear: number;
 }
 
 interface Particle {
-  kind: "note" | "z" | "confetti";
+  kind: "note" | "z" | "confetti" | "spark" | "sparkle";
   x: number;
   y: number;
   vx: number;
@@ -63,7 +66,7 @@ export class Scene {
   private readonly canvas: HTMLCanvasElement;
   private readonly buf: HTMLCanvasElement;
   private readonly bctx: CanvasRenderingContext2D;
-  private view: SceneView = { mood: "idle", typingRate: 0, tempoBpm: 60, ink: "#2e2a27", paper: "#b6c1b5", reduceMotion: false };
+  private view: SceneView = { mood: "idle", typingRate: 0, tempoBpm: 60, ink: "#2e2a27", paper: "#b6c1b5", reduceMotion: false, wear: 0 };
   private spriteCache = new Map<string, HTMLCanvasElement>();
   private particles: Particle[] = [];
   private raf = 0;
@@ -82,6 +85,7 @@ export class Scene {
   private flameAt = 0;
   private premiereUntil = 0;
   private wakeUntil = 0;
+  private joltUntil = 0;
   private prevMood: Mood = "idle";
   private zAt = 0;
   private rng = mulberry32(7);
@@ -171,6 +175,51 @@ export class Scene {
         seed: this.rng() * 6.28,
       });
     }
+  }
+
+  /** A jolt of spark debris from the keyboard when a jammed piano is struck. Self-throttled. */
+  jolt(): void {
+    if (this.time < this.joltUntil) return;
+    this.joltUntil = this.time + 0.4;
+    const originX = LAYOUT.piano.x + 27;
+    const originY = LAYOUT.piano.y + 20;
+    const n = this.view.reduceMotion ? 3 : 7;
+    for (let i = 0; i < n; i++) {
+      this.particles.push({
+        kind: "spark",
+        x: originX + (this.rng() - 0.5) * 6,
+        y: originY + (this.rng() - 0.5) * 4,
+        vx: (this.rng() - 0.5) * 26,
+        vy: -8 - this.rng() * 14,
+        age: 0,
+        life: 0.35 + this.rng() * 0.25,
+        variant: this.rng() < 0.5 ? 0 : 1,
+        seed: this.rng() * 6.28,
+      });
+    }
+    this.needsDraw = true;
+  }
+
+  /** A light, rising sparkle around the piano when it is repaired. */
+  sparkle(): void {
+    const originX = LAYOUT.piano.x + 13;
+    const originY = LAYOUT.piano.y + 18;
+    const n = this.view.reduceMotion ? 5 : 14;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * 6.28 + this.rng() * 0.4;
+      this.particles.push({
+        kind: "sparkle",
+        x: originX + Math.cos(a) * 4,
+        y: originY + Math.sin(a) * 10,
+        vx: Math.cos(a) * 4,
+        vy: -6 - this.rng() * 6,
+        age: -this.rng() * 0.15,
+        life: 1.0 + this.rng() * 0.5,
+        variant: this.rng() < 0.5 ? 0 : 1,
+        seed: this.rng() * 6.28,
+      });
+    }
+    this.needsDraw = true;
   }
 
   resize(): void {
@@ -289,7 +338,12 @@ export class Scene {
             p.landed = true;
           }
         }
-      } else if (p.kind === "note") {
+      } else if (p.kind === "spark") {
+        // Short-lived debris: gravity, no bounce, gone before it lands.
+        p.vy += 30 * elapsed;
+        p.x += p.vx * elapsed;
+        p.y += p.vy * elapsed;
+      } else if (p.kind === "note" || p.kind === "sparkle") {
         p.x += (p.vx + Math.sin(p.age * 3 + p.seed) * 5) * elapsed;
         p.y += p.vy * elapsed;
       } else {
@@ -313,12 +367,14 @@ export class Scene {
     this.drawClock();
     this.blit(S.RUG, LAYOUT.rug.x, LAYOUT.rug.y);
     this.blit(S.PIANO, LAYOUT.piano.x, LAYOUT.piano.y);
+    this.drawPianoWear();
     this.blit(S.CANDLE, LAYOUT.candle.x, LAYOUT.candle.y);
     this.blit(S.FLAME[this.flameFrame] ?? S.FLAME[0]!, LAYOUT.flame.x, LAYOUT.flame.y);
     this.drawMetronome();
     this.blit(S.ARMCHAIR, LAYOUT.armchair.x, LAYOUT.armchair.y);
     this.blit(this.time < this.tailUntil ? S.CAT[1]! : S.CAT[0]!, LAYOUT.cat.x, LAYOUT.cat.y);
     this.drawComposer();
+    if (this.view.mood === "thinking") this.drawThought();
     this.drawParticles();
 
     // Floor line.
@@ -346,6 +402,8 @@ export class Scene {
 
     const waking = this.time < this.wakeUntil;
     const premiere = v.mood === "premiere" || this.time < this.premiereUntil;
+    const broken = v.wear >= WEAR_BROKEN_AT;
+    const jolted = this.time < this.joltUntil;
 
     if (premiere) {
       head = S.HEAD_HAPPY;
@@ -359,9 +417,23 @@ export class Scene {
       head = S.HEAD_OPEN;
       armsUp = true;
       headDy = -1;
+    } else if (v.mood === "thinking") {
+      head = S.HEAD_THINKING;
+      arm = S.ARM_CHIN;
+      const settle = Math.floor(this.time / 2.4) % 2;
+      torsoDy = v.reduceMotion ? 0 : settle;
     } else if (v.mood === "playing") {
-      arm = beat ? S.ARM_KEYS_A : S.ARM_KEYS_B;
-      if (!v.reduceMotion) headDy = beat ? 0 : -1;
+      if (broken) {
+        // Nothing is landing; a resigned, stuck-in-place attempt.
+        arm = S.ARM_KEYS_A;
+        headDy = 1;
+      } else if (v.wear >= WEAR_STUTTER_AT && !v.reduceMotion && Math.floor(this.beatIndex) % 5 === 0) {
+        arm = S.ARM_KEYS_A; // a sticking key breaks the usual alternation
+        headDy = 1;
+      } else {
+        arm = beat ? S.ARM_KEYS_A : S.ARM_KEYS_B;
+        if (!v.reduceMotion) headDy = beat ? 0 : -1;
+      }
     } else if (v.mood === "dozing") {
       head = S.HEAD_CLOSED;
       headDx = -1;
@@ -376,13 +448,50 @@ export class Scene {
         headDy = -1;
       }
     }
-    if (this.time < this.blinkUntil && !premiere && v.mood !== "dozing") head = S.HEAD_CLOSED;
+    if (jolted && !v.reduceMotion) {
+      head = S.HEAD_CLOSED;
+      headDx -= 2;
+      headDy += 1;
+    }
+    if (this.time < this.blinkUntil && !premiere && !jolted && v.mood !== "dozing" && v.mood !== "thinking") head = S.HEAD_CLOSED;
 
     this.blit(S.STOOL, x, y + 26);
     this.blit(S.TORSO, x, y + 14 + torsoDy);
     if (armsUp) this.blit(S.ARMS_UP, x - 3, y + 8 + torsoDy);
     else if (arm) this.blit(arm, x - 10, y + 12 + torsoDy);
     this.blit(head, x + headDx, y + headDy + torsoDy);
+  }
+
+  /** A small note above the head, breathing gently while thinking. */
+  private drawThought(): void {
+    const ctx = this.bctx;
+    const { x, y } = LAYOUT.composer;
+    const bob = Math.sin(this.time * 1.1) * 1.5;
+    const alpha = this.view.reduceMotion ? 0.85 : 0.55 + 0.35 * Math.sin(this.time * 1.3);
+    ctx.globalAlpha = alpha;
+    this.blit(S.NOTE_A, x + 5, y - 9 + bob);
+    ctx.globalAlpha = 1;
+  }
+
+  /** Cracks that appear across the piano's panels as wear climbs, worst at full wear. */
+  private drawPianoWear(): void {
+    const wear = this.view.wear;
+    if (wear < 30) return;
+    const ctx = this.bctx;
+    ctx.fillStyle = this.view.ink;
+    const { x, y } = LAYOUT.piano;
+    const px = (dx: number, dy: number) => ctx.fillRect(x + dx, y + dy, 1, 1);
+    // Each crack is a short jagged line in panel-local coordinates.
+    const CRACKS: ReadonlyArray<{ at: number; points: ReadonlyArray<[number, number]> }> = [
+      { at: 30, points: [[10, 28], [11, 29], [11, 30], [12, 31], [12, 32]] },
+      { at: 60, points: [[17, 33], [18, 32], [18, 31], [19, 30], [19, 29], [20, 28]] },
+      { at: 85, points: [[6, 5], [7, 6], [7, 7], [8, 8]] },
+      { at: WEAR_BROKEN_AT, points: [[14, 36], [15, 36], [14, 37], [16, 37], [15, 38]] },
+    ];
+    for (const crack of CRACKS) {
+      if (wear < crack.at) continue;
+      for (const [dx, dy] of crack.points) px(dx, dy);
+    }
   }
 
   private drawMetronome(): void {
@@ -549,6 +658,19 @@ export class Scene {
         const fading = p.age > p.life * 0.7;
         if (fading && Math.floor(p.age * 10) % 2 === 0) continue;
         this.blitHalo(p.variant === 0 ? S.Z_SMALL : S.Z_BIG, px, py);
+      } else if (p.kind === "spark") {
+        ctx.fillStyle = this.view.ink;
+        ctx.fillRect(px, py, p.variant === 0 ? 2 : 1, p.variant === 0 ? 1 : 2);
+      } else if (p.kind === "sparkle") {
+        const fading = p.age > p.life * 0.6;
+        if (fading && Math.floor(p.age * 14) % 2 === 0) continue;
+        ctx.fillStyle = this.view.ink;
+        if (p.variant === 0) {
+          ctx.fillRect(px, py - 1, 1, 3);
+          ctx.fillRect(px - 1, py, 3, 1);
+        } else {
+          ctx.fillRect(px, py, 1, 1);
+        }
       } else {
         const fadeOut = p.age > p.life - 1.2 && Math.floor(p.age * 10) % 2 === 0;
         if (fadeOut) continue;

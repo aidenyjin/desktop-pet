@@ -4,12 +4,13 @@ import type { Bridge, Permission } from "./bridge";
 import { Engine } from "./engine";
 import { formatMoney } from "./game/economy";
 import { generateMelody, pentatonic, rootMidi } from "./game/melody";
-import { dismissNotice, newGame, setSettings, startPiece, type GameEvent, type GameState, type Theme, type Work } from "./game/state";
+import { dismissNotice, progress, newGame, repairPiano, setSettings, startPiece, startThinking, stopThinking, type GameEvent, type GameState, type Theme, type Work } from "./game/state";
 import { Scene } from "./scene/scene";
 import { GameStore } from "./store";
 import { h } from "./ui/dom";
 import { Hud } from "./ui/hud";
 import { Menu, type MenuEntry } from "./ui/menu";
+import { attachMiniDrag, createMiniOverlay } from "./ui/mini";
 import { ModalHost } from "./ui/modal";
 import { openPieces, openRename, openRepertoire, openSettings, openUpgrades } from "./ui/modals";
 import { runOnboarding } from "./ui/onboarding";
@@ -64,6 +65,12 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
     onChoose: () => openPieces(app),
     onRename: () => openRename(app),
     onFixListening: () => openSettings(app),
+    onRepair: () => {
+      const before = store.get().pianoWear;
+      store.update((s) => repairPiano(s), { immediate: true });
+      if (store.get().pianoWear < before) scene.sparkle();
+    },
+    onStopThinking: () => store.update((s) => stopThinking(s), { immediate: true }),
   });
   card.appendChild(sceneBox);
   const toast = new Toast(card, {
@@ -73,6 +80,40 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
       if (work) listen(work, () => {});
     },
   });
+  const mini = createMiniOverlay(card);
+
+  function enterMini(): void {
+    if (store.get().settings.mini) return;
+    menu.close();
+    modals.close();
+    const at = store.get().settings.miniPosition;
+    store.update((s) => setSettings(s, { mini: true }), { immediate: true });
+    void bridge.setMini(true, at);
+  }
+
+  function exitMini(): void {
+    if (!store.get().settings.mini) return;
+    store.update((s) => setSettings(s, { mini: false }), { immediate: true });
+    void bridge.setMini(false, null);
+    // A browser-fallback drag leaves inline positioning behind; the full
+    // panel is positioned by its own CSS.
+    card.style.left = "";
+    card.style.top = "";
+    card.style.right = "";
+    card.style.bottom = "";
+  }
+
+  function persistMiniPosition(x: number, y: number): void {
+    store.update((s) => setSettings(s, { miniPosition: { x, y } }));
+  }
+
+  attachMiniDrag(card, {
+    isTauri: bridge.isTauri,
+    startWindowDrag: () => bridge.startWindowDrag(),
+    onExpand: exitMini,
+    onDragEnd: persistMiniPosition,
+  });
+  bridge.onMoved(persistMiniPosition);
 
   const menuEntries = (): MenuEntry[] => {
     const s = store.get();
@@ -83,6 +124,12 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
       { label: "Settings", onSelect: () => openSettings(app), hint: "⌘," },
       "separator",
       { label: "Keep open", checked: s.settings.pinned, onSelect: () => store.update((st) => setSettings(st, { pinned: !st.settings.pinned }), { immediate: true }) },
+      { label: "Shrink", checked: s.settings.mini, onSelect: () => (s.settings.mini ? exitMini() : enterMini()) },
+      {
+        label: "Thinking",
+        checked: s.thinkingSince !== null,
+        onSelect: () => store.update((st) => (st.thinkingSince !== null ? stopThinking(st) : startThinking(st)), { immediate: true }),
+      },
     ];
     if (bridge.isTauri) {
       entries.push("separator", {
@@ -124,6 +171,8 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
   let lastSettingsJson = "";
   const render = (s: GameState, prev?: GameState) => {
     hud.update(s, store.unseen());
+    mini.setProgress(progress(s));
+    mini.setUnseen(store.unseen() > 0);
     const badge = store.unseen() > 0;
     if (badge !== lastBadge) {
       lastBadge = badge;
@@ -142,6 +191,7 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
       applyTheme(s.settings.theme);
       audio.setEnabled(s.settings.sound || s.settings.playAlong);
       void bridge.setPinned(s.settings.pinned).catch(() => {});
+      card.classList.toggle("is-mini", s.settings.mini);
     }
     const modalKey = [
       Math.floor(s.money),
@@ -264,6 +314,7 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
       if (modals.isOpen) modals.close();
       else if (menu.isOpen) menu.close();
       else if (toast.visible && toast.current === null) toast.hide();
+      else if (store.get().settings.mini) exitMini();
       else if (!store.get().settings.pinned) void bridge.hidePanel();
       return;
     }
@@ -313,12 +364,26 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
   await refreshListening();
   engine.start();
   if (bridge.isTauri) {
-    // The panel may already be on screen if the tray was clicked during load.
-    const shown = await bridge.panelVisible().catch(() => false);
-    setVisible(shown);
-    if (!shown) card.classList.add("is-visible");
+    if (store.get().settings.mini) {
+      // The mini widget is a persistent desktop fixture, not a click-to-show
+      // panel: tell the host to size and place the real window, then show it.
+      await bridge.setMini(true, store.get().settings.miniPosition).catch(() => {});
+      setVisible(true);
+    } else {
+      // The panel may already be on screen if the tray was clicked during load.
+      const shown = await bridge.panelVisible().catch(() => false);
+      setVisible(shown);
+      if (!shown) card.classList.add("is-visible");
+    }
   } else {
     setVisible(true);
+    if (store.get().settings.mini) {
+      const pos = store.get().settings.miniPosition;
+      if (pos) {
+        card.style.left = `${pos.x}px`;
+        card.style.top = `${pos.y}px`;
+      }
+    }
   }
 
   if (store.loadFailed) toast.say("The last save could not be read.", "Starting from a fresh manuscript.");

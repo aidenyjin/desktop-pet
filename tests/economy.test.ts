@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   FORMS,
   UPGRADES,
+  SAFE_KEYS_PER_SEC,
+  WEAR_BROKEN_AT,
+  INSPIRATION_CAP_SECONDS,
+  INSPIRATION_MAX_BONUS,
   artistryMultiplier,
   drawReception,
   formatMoney,
@@ -13,6 +17,9 @@ import {
   formUnlocked,
   tempoName,
   notesPerKey,
+  wearFromTyping,
+  repairCost,
+  inspirationBonus,
 } from "../src/game/economy";
 
 describe("forms", () => {
@@ -109,5 +116,42 @@ describe("formatting", () => {
     expect(formatMoney(0)).toBe("$0");
     expect(formatMoney(2275.7)).toBe("$2,275");
     expect(formatMoney(12068)).toBe("$12,068");
+  });
+});
+
+describe("piano wear", () => {
+  it("adds no wear at or under a safe typing rate", () => {
+    expect(wearFromTyping(SAFE_KEYS_PER_SEC, 1)).toBe(0);
+    expect(wearFromTyping(3, 1)).toBe(0);
+    expect(wearFromTyping(0, 1)).toBe(0);
+  });
+  it("wears faster the more the rate exceeds safe typing", () => {
+    const mild = wearFromTyping(SAFE_KEYS_PER_SEC + 2, 1);
+    const wild = wearFromTyping(SAFE_KEYS_PER_SEC + 20, 1);
+    expect(mild).toBeGreaterThan(0);
+    expect(wild).toBeGreaterThan(mild * 5);
+  });
+  it("ignores a non-positive duration", () => {
+    expect(wearFromTyping(50, 0)).toBe(0);
+    expect(wearFromTyping(50, -1)).toBe(0);
+  });
+  it("repair is free at zero wear and expensive near broken", () => {
+    expect(repairCost(0)).toBe(0);
+    expect(repairCost(10)).toBeGreaterThan(0);
+    expect(repairCost(WEAR_BROKEN_AT)).toBeGreaterThan(repairCost(50) * 2);
+  });
+  it("clamps repair cost to the broken ceiling", () => {
+    expect(repairCost(150)).toBe(repairCost(WEAR_BROKEN_AT));
+  });
+});
+
+describe("inspiration", () => {
+  it("is zero with no thinking and caps at the max bonus", () => {
+    expect(inspirationBonus(0)).toBe(0);
+    expect(inspirationBonus(INSPIRATION_CAP_SECONDS)).toBeCloseTo(INSPIRATION_MAX_BONUS);
+    expect(inspirationBonus(INSPIRATION_CAP_SECONDS * 10)).toBeCloseTo(INSPIRATION_MAX_BONUS);
+  });
+  it("grows linearly with banked seconds", () => {
+    expect(inspirationBonus(INSPIRATION_CAP_SECONDS / 2)).toBeCloseTo(INSPIRATION_MAX_BONUS / 2);
   });
 });

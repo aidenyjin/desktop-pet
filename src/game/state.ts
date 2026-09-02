@@ -4,14 +4,19 @@
  */
 import {
   FORMS,
+  INSPIRATION_CAP_SECONDS,
+  WEAR_BROKEN_AT,
   drawReception,
   formById,
   formUnlocked,
+  inspirationBonus,
   notesPerKey,
   payoutFor,
   renownFor,
+  repairCost,
   upgradeCost,
   upgradeDef,
+  wearFromTyping,
   type FormId,
   type UpgradeId,
   type Upgrades,
@@ -33,6 +38,10 @@ export interface Settings {
   notifications: boolean;
   /** Keep the panel open when it loses focus. */
   pinned: boolean;
+  /** Shrunk to a small draggable widget instead of the full panel. */
+  mini: boolean;
+  /** Where the mini widget was last left, in physical screen pixels. */
+  miniPosition: { x: number; y: number } | null;
 }
 
 export interface Piece {
@@ -59,6 +68,8 @@ export interface Work {
   earned: number;
   reception: number;
   receptionLine: string;
+  /** Reception bonus (0–0.15) from banked thinking-mode inspiration, if any. */
+  inspirationBonus: number;
   startedAt: number;
   completedAt: number;
   opus: number;
@@ -71,6 +82,7 @@ export interface Notice {
   title: string;
   earned: number;
   line: string;
+  inspirationBonus: number;
   at: number;
   seen: boolean;
 }
@@ -103,6 +115,12 @@ export interface GameState {
   inbox: Notice[];
   settings: Settings;
   stats: Stats;
+  /** 0 (pristine) – 100 (jammed); see economy.ts for the mechanics. */
+  pianoWear: number;
+  /** Timestamp thinking mode was turned on, or null while typing/idle. */
+  thinkingSince: number | null;
+  /** Banked thinking time (seconds) not yet spent on a premiere. */
+  pendingInspirationSec: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -111,6 +129,8 @@ export const DEFAULT_SETTINGS: Settings = {
   playAlong: false,
   notifications: true,
   pinned: false,
+  mini: false,
+  miniPosition: null,
 };
 
 export function newGame(now = Date.now()): GameState {
@@ -130,6 +150,9 @@ export function newGame(now = Date.now()): GameState {
     inbox: [],
     settings: { ...DEFAULT_SETTINGS },
     stats: { premieres: 0, bestEarning: 0, totalEarned: 0, spent: 0, today: dayKey(now), todayNotes: 0 },
+    pianoWear: 0,
+    thinkingSince: null,
+    pendingInspirationSec: 0,
   };
 }
 
@@ -156,23 +179,44 @@ export function makeId(prefix: string, now = Date.now()): string {
 export type GameEvent =
   | { type: "notes"; added: number }
   | { type: "premiere"; work: Work; notice: Notice }
-  | { type: "started"; piece: Piece };
+  | { type: "started"; piece: Piece }
+  /** Keystrokes that landed while the piano was jammed; no notes were written. */
+  | { type: "wasted"; keys: number };
 
 export interface Transition {
   state: GameState;
   events: GameEvent[];
 }
 
-/** Applies `keys` new keystrokes. Pure; `rng` only decides receptions. */
+/**
+ * Applies `keys` new keystrokes. Pure; `rng` only decides receptions.
+ * `dtSeconds` is how long this batch spans in real time and `typingRate` is
+ * the caller's *smoothed* keys-per-second (not `keys / dtSeconds`, which
+ * would flag an ordinary quick burst as spam) — together they gauge piano
+ * wear. Omitting either (the defaults) never wears the piano; the engine
+ * passes the real tick length and its running-average typing rate.
+ */
 export function applyKeys(
   state: GameState,
   keys: number,
   now = Date.now(),
   rng: () => number = Math.random,
+  dtSeconds = 0,
+  typingRate = 0,
 ): Transition {
   const events: GameEvent[] = [];
   if (keys <= 0) return { state, events };
-  let s: GameState = { ...state, keysConsumed: state.keysConsumed + keys };
+  // Typing — of any kind — means you're not just sitting there thinking.
+  let s: GameState = stopThinking(state, now);
+  s = { ...s, keysConsumed: s.keysConsumed + keys };
+
+  const wasBroken = s.pianoWear >= WEAR_BROKEN_AT;
+  s = { ...s, pianoWear: Math.min(100, s.pianoWear + wearFromTyping(typingRate, dtSeconds)) };
+  if (wasBroken) {
+    events.push({ type: "wasted", keys });
+    return { state: s, events };
+  }
+
   if (!s.current) {
     // Nothing on the stand: the composer sketches; keep a bounded pile of
     // spare notes so a lump of typing is not entirely wasted.
@@ -209,7 +253,9 @@ function premiere(state: GameState, now: number, rng: () => number): Transition 
   const piece = state.current!;
   const form = formById(piece.formId);
   const reception = drawReception(rng(), rng(), state.upgrades.artistry);
-  const earned = payoutFor(form, state.upgrades, reception.factor);
+  const bonus = inspirationBonus(state.pendingInspirationSec);
+  const factor = reception.factor + bonus;
+  const earned = payoutFor(form, state.upgrades, factor);
   const work: Work = {
     id: piece.id,
     formId: piece.formId,
@@ -219,8 +265,9 @@ function premiere(state: GameState, now: number, rng: () => number): Transition 
     seed: piece.seed,
     notes: piece.target,
     earned,
-    reception: reception.factor,
+    reception: factor,
     receptionLine: reception.line,
+    inspirationBonus: bonus,
     startedAt: piece.startedAt,
     completedAt: now,
     opus: piece.opus,
@@ -232,6 +279,7 @@ function premiere(state: GameState, now: number, rng: () => number): Transition 
     title: work.title,
     earned,
     line: reception.line,
+    inspirationBonus: bonus,
     at: now,
     seen: false,
   };
@@ -240,6 +288,7 @@ function premiere(state: GameState, now: number, rng: () => number): Transition 
     money: state.money + earned,
     renown: state.renown + renownFor(form),
     current: null,
+    pendingInspirationSec: 0,
     repertoire: [...state.repertoire, work],
     inbox: [...state.inbox, notice].slice(-20),
     stats: {
@@ -335,6 +384,44 @@ export function progress(state: GameState): number {
   return Math.min(1, state.current.notes / state.current.target);
 }
 
+// ───────────────────────── thinking mode ─────────────────────────
+
+/** Starts the thinking timer; a no-op if it is already running. */
+export function startThinking(state: GameState, now = Date.now()): GameState {
+  if (state.thinkingSince !== null) return state;
+  return { ...state, thinkingSince: now };
+}
+
+/** Banks elapsed thinking time (capped) and stops the timer. */
+export function stopThinking(state: GameState, now = Date.now()): GameState {
+  if (state.thinkingSince === null) return state;
+  const elapsed = Math.max(0, (now - state.thinkingSince) / 1000);
+  return {
+    ...state,
+    thinkingSince: null,
+    pendingInspirationSec: Math.min(INSPIRATION_CAP_SECONDS, state.pendingInspirationSec + elapsed),
+  };
+}
+
+/** Banked + (if running) live-accruing thinking time, capped, in seconds. */
+export function currentInspirationSeconds(state: GameState, now = Date.now()): number {
+  const live = state.thinkingSince === null ? 0 : Math.max(0, (now - state.thinkingSince) / 1000);
+  return Math.min(INSPIRATION_CAP_SECONDS, state.pendingInspirationSec + live);
+}
+
+// ───────────────────────── the piano ─────────────────────────
+
+export function canRepair(state: GameState): boolean {
+  const cost = repairCost(state.pianoWear);
+  return cost > 0 && state.money >= cost;
+}
+
+export function repairPiano(state: GameState): GameState {
+  const cost = repairCost(state.pianoWear);
+  if (cost <= 0 || state.money < cost) return state;
+  return { ...state, money: state.money - cost, pianoWear: 0, stats: { ...state.stats, spent: state.stats.spent + cost } };
+}
+
 // ───────────────────────── persistence ─────────────────────────
 
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -364,12 +451,15 @@ export function migrate(raw: unknown): GameState | null {
     ambition: Math.min(upgradeDef("ambition").max, Math.floor(num(up.ambition, 1, 1))),
   };
   const st = isObj(raw.settings) ? raw.settings : {};
+  const miniPos = isObj(st.miniPosition) ? st.miniPosition : null;
   const settings: Settings = {
     theme: st.theme === "paper" || st.theme === "night" || st.theme === "auto" ? st.theme : "auto",
     sound: typeof st.sound === "boolean" ? st.sound : DEFAULT_SETTINGS.sound,
     playAlong: typeof st.playAlong === "boolean" ? st.playAlong : DEFAULT_SETTINGS.playAlong,
     notifications: typeof st.notifications === "boolean" ? st.notifications : DEFAULT_SETTINGS.notifications,
     pinned: typeof st.pinned === "boolean" ? st.pinned : DEFAULT_SETTINGS.pinned,
+    mini: typeof st.mini === "boolean" ? st.mini : DEFAULT_SETTINGS.mini,
+    miniPosition: miniPos && isNum(miniPos.x) && isNum(miniPos.y) ? { x: miniPos.x, y: miniPos.y } : null,
   };
   const s0 = isObj(raw.stats) ? raw.stats : {};
   const state: GameState = {
@@ -395,6 +485,9 @@ export function migrate(raw: unknown): GameState | null {
       today: isStr(s0.today) ? s0.today : dayKey(Date.now()),
       todayNotes: num(s0.todayNotes, 0, 0),
     },
+    pianoWear: Math.max(0, Math.min(100, num(raw.pianoWear, 0, 0))),
+    thinkingSince: isNum(raw.thinkingSince) && raw.thinkingSince > 0 && raw.thinkingSince <= Date.now() + 60_000 ? raw.thinkingSince : null,
+    pendingInspirationSec: Math.max(0, Math.min(INSPIRATION_CAP_SECONDS, num(raw.pendingInspirationSec, 0, 0))),
   };
   if (state.current && state.current.notes > state.current.target) state.current.notes = state.current.target;
   state.spareNotes = Math.min(state.spareNotes, spareCap(state));
@@ -445,6 +538,7 @@ function migrateWork(v: unknown): Work | null {
     earned: Math.floor(num(v.earned, 0, 0)),
     reception: num(v.reception, 1),
     receptionLine: isStr(v.receptionLine) ? v.receptionLine : "",
+    inspirationBonus: Math.max(0, num(v.inspirationBonus, 0, 0)),
     startedAt: num(v.startedAt, 0),
     completedAt: num(v.completedAt, 0),
     opus,
@@ -460,6 +554,7 @@ function migrateNotice(v: unknown): Notice | null {
     title: isStr(v.title) ? v.title : "",
     earned: Math.floor(num(v.earned, 0, 0)),
     line: isStr(v.line) ? v.line : "",
+    inspirationBonus: Math.max(0, num(v.inspirationBonus, 0, 0)),
     at: num(v.at, 0),
     seen: v.seen === true,
   };

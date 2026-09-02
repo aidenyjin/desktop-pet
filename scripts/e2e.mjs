@@ -59,6 +59,15 @@ try {
     assert(await page.isHidden(".badge"), "badge clears after dismissing");
   });
 
+  await step("a big fast-forward burst does not wear the piano", async () => {
+    // A single large addKeys() call spikes the *instant* rate sample for one
+    // tick; it must not leak into the smoothed rate enough to register as
+    // spamming (that regressed once already — see engine.ts's rate cap).
+    await page.waitForTimeout(500);
+    const wear = await page.evaluate(() => JSON.parse(localStorage.getItem("sonatina.save")).pianoWear);
+    assert(wear === 0, `expected no piano wear from fast-forwarding, got ${wear}`);
+  });
+
   await step("spare notes carry into the next piece", async () => {
     await page.click("text=Choose a piece");
     await page.click(".row:not(.is-locked)");
@@ -97,6 +106,72 @@ try {
     await page.click("text=Night");
     assert((await page.getAttribute("html", "data-theme")) === "night", "night theme applied");
     await page.keyboard.press("Escape");
+  });
+
+  await step("mini mode shrinks, drags, and expands back", async () => {
+    await page.click(".icon-btn");
+    await page.click("text=Shrink");
+    await page.waitForTimeout(300);
+    assert(await page.evaluate(() => document.querySelector(".card").classList.contains("is-mini")), "card is mini");
+    const box = await page.locator(".card").boundingBox();
+    assert(Math.abs(box.width - 128) < 2, `mini width was ${box.width}`);
+    await page.mouse.move(box.x + 40, box.y + 40);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 120, box.y + 160, { steps: 6 });
+    await page.mouse.up();
+    await page.waitForTimeout(150);
+    const moved = await page.locator(".card").boundingBox();
+    assert(Math.abs(moved.x - box.x) > 20 || Math.abs(moved.y - box.y) > 20, "mini widget actually moved");
+    await page.mouse.click(moved.x + 64, moved.y + 64);
+    await page.waitForTimeout(400);
+    assert(!(await page.evaluate(() => document.querySelector(".card").classList.contains("is-mini"))), "expanded back to full");
+    assert(await page.isVisible(".hud"), "hud visible again");
+  });
+
+  await step("thinking mode banks inspiration and typing interrupts it", async () => {
+    await page.click(".icon-btn");
+    await page.click("text=Thinking");
+    await page.waitForTimeout(200);
+    assert(await page.isVisible("text=Thinking it through"), "thinking banner shown");
+    // Let the store's debounced save settle before editing localStorage
+    // directly, so this still-running instance's own unload-time flush (on
+    // the reload below) has nothing stale to write back over the edit.
+    await page.waitForTimeout(1000);
+    await page.evaluate(() => {
+      // Simulate having thought for a while without waiting for real time.
+      const save = JSON.parse(localStorage.getItem("sonatina.save"));
+      save.thinkingSince = Date.now() - 120_000;
+      localStorage.setItem("sonatina.save", JSON.stringify(save));
+    });
+    await page.reload();
+    await page.waitForSelector(".card");
+    assert(await page.isVisible("text=Thinking it through"), "thinking resumed after reload");
+    await page.keyboard.type("back to work");
+    await page.waitForTimeout(1100);
+    assert(!(await page.isVisible("text=Thinking it through")), "typing stopped thinking mode");
+    const pending = await page.evaluate(() => JSON.parse(localStorage.getItem("sonatina.save")).pendingInspirationSec);
+    assert(pending > 100, `expected banked thinking time, got ${pending}`);
+  });
+
+  await step("a worn piano can be repaired", async () => {
+    await page.waitForTimeout(1000);
+    await page.evaluate(() => {
+      const save = JSON.parse(localStorage.getItem("sonatina.save"));
+      save.pianoWear = 40;
+      save.money = 100000;
+      localStorage.setItem("sonatina.save", JSON.stringify(save));
+    });
+    await page.reload();
+    await page.waitForSelector(".card");
+    assert(await page.isVisible("text=The piano could use some care."), "wear banner shown");
+    const moneyBefore = await page.textContent(".money");
+    await page.click(".piece-hint .link");
+    await page.waitForTimeout(300);
+    assert(!(await page.isVisible("text=The piano could use some care.")), "wear banner cleared");
+    const moneyAfter = await page.textContent(".money");
+    assert(moneyBefore !== moneyAfter, "repair cost money");
+    const wear = await page.evaluate(() => JSON.parse(localStorage.getItem("sonatina.save")).pianoWear);
+    assert(wear === 0, `expected wear cleared, got ${wear}`);
   });
 
   await step("reset keeps the name and settings", async () => {

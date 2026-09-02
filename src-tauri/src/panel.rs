@@ -16,6 +16,9 @@ const GAP_LOGICAL: f64 = 2.0;
 #[derive(Debug, Default)]
 pub struct PanelState {
     pub pinned: AtomicBool,
+    /// Shrunk to the small draggable widget; suppresses hide-on-blur and
+    /// changes what "show" and "exit" do.
+    pub mini: AtomicBool,
     /// Millisecond timestamp of the last blur-triggered hide. Used to make a
     /// tray click that *caused* the blur behave as "close" rather than
     /// "close and immediately reopen".
@@ -56,6 +59,13 @@ pub fn window<R: Runtime>(app: &AppHandle<R>) -> Option<WebviewWindow<R>> {
     app.get_webview_window(WINDOW_LABEL)
 }
 
+/// The mini widget's *window* is square; this is its side, in logical
+/// pixels. The visible circle is smaller (see styles.css --mini), leaving a
+/// margin for its drop shadow, the same way the full panel does.
+pub const MINI_LOGICAL: f64 = 140.0;
+const FULL_LOGICAL_W: f64 = 396.0;
+const FULL_LOGICAL_H: f64 = 512.0;
+
 /// Converts a tray rectangle into physical pixels using the scale factor of
 /// the monitor it sits on.
 fn rect_physical<R: Runtime>(win: &WebviewWindow<R>, rect: &Rect) -> (f64, f64, f64, f64) {
@@ -93,6 +103,36 @@ fn monitor_at<R: Runtime>(win: &WebviewWindow<R>, x: f64, y: f64) -> Option<taur
         })
         .cloned()
         .or_else(|| win.primary_monitor().ok().flatten())
+}
+
+/// Clamps a physical position so a `logical_w`×`logical_h` window stays
+/// fully on the monitor nearest `(x, y)`, with a small margin.
+fn clamp_to_monitor<R: Runtime>(win: &WebviewWindow<R>, x: f64, y: f64, logical_w: f64, logical_h: f64) -> (f64, f64) {
+    let Some(m) = monitor_at(win, x, y) else { return (x, y) };
+    let scale = m.scale_factor();
+    let area = m.work_area();
+    let (w, h) = (logical_w * scale, logical_h * scale);
+    let pad = 4.0 * scale;
+    let (ax, ay) = (area.position.x as f64, area.position.y as f64);
+    let (aw, ah) = (area.size.width as f64, area.size.height as f64);
+    let cx = x.max(ax + pad).min((ax + aw - w - pad).max(ax + pad));
+    let cy = y.max(ay + pad).min((ay + ah - h - pad).max(ay + pad));
+    (cx, cy)
+}
+
+/// Bottom-right corner of the primary monitor's work area, as a sensible
+/// first home for the mini widget.
+fn default_mini_position<R: Runtime>(win: &WebviewWindow<R>) -> (f64, f64) {
+    if let Ok(Some(m)) = win.primary_monitor() {
+        let scale = m.scale_factor();
+        let area = m.work_area();
+        let pad = 20.0 * scale;
+        let size = MINI_LOGICAL * scale;
+        let x = area.position.x as f64 + area.size.width as f64 - size - pad;
+        let y = area.position.y as f64 + area.size.height as f64 - size - pad;
+        return (x, y);
+    }
+    (120.0, 120.0)
 }
 
 /// Positions the panel centred under the tray icon and shows it.
@@ -165,4 +205,29 @@ pub fn toggle<R: Runtime>(app: &AppHandle<R>, tray: Option<&Rect>) {
     } else {
         show(app, tray);
     }
+}
+
+/// Shrinks the panel to the mini widget at `at` (physical pixels), or a
+/// sensible default corner if `at` is `None` or off-screen.
+pub fn enter_mini<R: Runtime>(app: &AppHandle<R>, at: Option<(f64, f64)>) {
+    let Some(win) = window(app) else { return };
+    app.state::<PanelState>().mini.store(true, Ordering::Relaxed);
+    let _ = win.set_size(tauri::LogicalSize::new(MINI_LOGICAL, MINI_LOGICAL));
+    let (rx, ry) = at.unwrap_or_else(|| default_mini_position(&win));
+    let (x, y) = clamp_to_monitor(&win, rx, ry, MINI_LOGICAL, MINI_LOGICAL);
+    let _ = win.set_position(PhysicalPosition::new(x.round() as i32, y.round() as i32));
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.show();
+    }
+    let _ = win.show();
+    let _ = win.set_focus();
+}
+
+/// Restores the full panel, docked back under the tray icon.
+pub fn exit_mini<R: Runtime>(app: &AppHandle<R>, tray: Option<&Rect>) {
+    let Some(win) = window(app) else { return };
+    app.state::<PanelState>().mini.store(false, Ordering::Relaxed);
+    let _ = win.set_size(tauri::LogicalSize::new(FULL_LOGICAL_W, FULL_LOGICAL_H));
+    show(app, tray);
 }

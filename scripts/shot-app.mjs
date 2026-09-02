@@ -42,9 +42,13 @@ try {
   page.on("console", (m) => { if (m.type() === "error") console.error("CONSOLE:", m.text()); });
   const base = "http://localhost:1421/";
 
+  // Seeds via an init script that runs before the app's own JS, so the
+  // very first boot reads it directly — no race with the previous
+  // instance's unload-time save flush (which, on a truly empty first
+  // boot, has nothing to compare against and always "successfully"
+  // persists the default state, clobbering a save set after the fact).
   const seed = async (save, extra = "") => {
-    await page.goto(base + extra);
-    await page.evaluate((s) => {
+    await page.addInitScript((s) => {
       localStorage.clear();
       if (s) localStorage.setItem("sonatina.save", JSON.stringify(s));
     }, save);
@@ -123,6 +127,31 @@ try {
   await page.click("text=Choose a piece");
   await page.waitForTimeout(200);
   await shot("modal-choose");
+
+  // Mini widget
+  await seed({ ...richSave, settings: { ...richSave.settings, mini: true, miniPosition: null } });
+  await page.waitForTimeout(300);
+  await shot("mini-widget");
+  await page.mouse.move(60, 60);
+  await page.mouse.down();
+  await page.mouse.move(200, 260, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  await shot("mini-widget-dragged");
+  await page.mouse.click(200, 260);
+  await page.waitForTimeout(400);
+  await shot("mini-expanded-back");
+
+  // Piano wear + repair banner
+  await seed({ ...richSave, pianoWear: 72 });
+  await shot("main-worn");
+  await seed({ ...richSave, pianoWear: 100 });
+  await shot("main-broken");
+
+  // Thinking mode
+  await seed({ ...richSave, thinkingSince: Date.now() - 65_000 });
+  await page.waitForTimeout(300);
+  await shot("main-thinking");
 
   // Night theme
   await seed({ ...richSave, settings: { ...richSave.settings, theme: "night" } });

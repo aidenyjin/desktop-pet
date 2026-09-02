@@ -15,7 +15,7 @@ use std::time::Duration;
 use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, Runtime, State, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State, WindowEvent};
 use tauri_plugin_autostart::ManagerExt as _;
 #[cfg(feature = "notifications")]
 use tauri_plugin_notification::NotificationExt as _;
@@ -120,6 +120,21 @@ fn hide_panel(app: AppHandle) {
 #[tauri::command]
 fn panel_visible(app: AppHandle) -> bool {
     panel::is_visible(&app)
+}
+
+#[tauri::command]
+fn set_mini(app: AppHandle, enabled: bool, x: Option<f64>, y: Option<f64>) {
+    if enabled {
+        panel::enter_mini(&app, x.zip(y));
+    } else {
+        let rect = app.tray_by_id(TRAY_ID).and_then(|t| t.rect().ok().flatten());
+        panel::exit_mini(&app, rect.as_ref());
+    }
+}
+
+#[tauri::command]
+fn is_mini(panel: State<'_, PanelState>) -> bool {
+    panel.mini.load(Ordering::Relaxed)
 }
 
 #[tauri::command]
@@ -358,17 +373,28 @@ pub fn run() {
                     flush_keys(&handle);
                 })?;
 
-            // Hide on blur unless pinned.
+            // Hide on blur unless pinned or shrunk to the mini widget, which
+            // is meant to sit on screen persistently.
             if let Some(win) = panel::window(app.handle()) {
                 let handle = app.handle().clone();
-                win.on_window_event(move |event| {
-                    if let WindowEvent::Focused(false) = event {
+                win.on_window_event(move |event| match event {
+                    WindowEvent::Focused(false) => {
                         let panel_state = handle.state::<PanelState>();
-                        if !panel_state.pinned.load(Ordering::Relaxed) && panel::is_visible(&handle) {
+                        let should_hide = !panel_state.pinned.load(Ordering::Relaxed)
+                            && !panel_state.mini.load(Ordering::Relaxed)
+                            && panel::is_visible(&handle);
+                        if should_hide {
                             panel_state.note_blur_hide();
                             panel::hide(&handle);
                         }
                     }
+                    WindowEvent::Moved(pos) => {
+                        let panel_state = handle.state::<PanelState>();
+                        if panel_state.mini.load(Ordering::Relaxed) {
+                            let _ = handle.emit_to(panel::WINDOW_LABEL, "panel:moved", *pos);
+                        }
+                    }
+                    _ => {}
                 });
             }
             Ok(())
@@ -387,6 +413,8 @@ pub fn run() {
             set_pinned,
             hide_panel,
             panel_visible,
+            set_mini,
+            is_mini,
             set_badge,
             set_tooltip,
             get_autostart,
@@ -409,7 +437,6 @@ pub fn run() {
                 }
                 // Give the webview a moment to write its save, then leave.
                 api.prevent_exit();
-                use tauri::Emitter as _;
                 let _ = app.emit_to(panel::WINDOW_LABEL, "app:quit", ());
                 let handle = app.clone();
                 std::thread::spawn(move || {

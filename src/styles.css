@@ -36,6 +36,11 @@
   --margin-x: 18px;
   --margin-top: 8px;
   --margin-bottom: 34px;
+  /* Mini widget: a 140px window holds a 128px visible circle, 6px of
+     margin on each side for its drop shadow — the same pattern as the
+     full panel's margin around its shadow. */
+  --mini: 128px;
+  --mini-margin: 6px;
   color-scheme: light;
 }
 :root[data-theme="night"] {
@@ -122,7 +127,12 @@ input:focus-visible,
   transform: translateY(-4px) scale(0.985);
   transition:
     opacity 140ms ease-out,
-    transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    left 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    top 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    width 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    height 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-radius 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .card.is-visible {
   opacity: 1;
@@ -136,6 +146,70 @@ body.in-browser .card {
   .card {
     transition: none;
   }
+}
+
+/* ───────── mini widget ───────── */
+.card.is-mini {
+  left: var(--mini-margin);
+  top: var(--mini-margin);
+  width: var(--mini);
+  height: var(--mini);
+  border-radius: 50%;
+  cursor: grab;
+}
+.card.is-mini:active {
+  cursor: grabbing;
+}
+.card.is-mini .hud,
+.card.is-mini .piece,
+.card.is-mini .modal-layer,
+.card.is-mini .toast {
+  display: none;
+}
+.card.is-mini .scene {
+  pointer-events: none;
+  /* Crops and zooms onto the composer; see ui/mini.ts for the numbers. */
+  transform-origin: 0 0;
+  /* .scene is bottom-anchored and taller than the mini card, which pushes
+     its untransformed top edge up by (card height − scene height) = -72px;
+     folded into --mini-ty so the translate still lands on the composer. */
+  transform: translate(var(--mini-tx, -195px), var(--mini-ty, -157px)) scale(var(--mini-zoom, 2.4));
+}
+.mini-ring {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: none;
+}
+.card.is-mini .mini-ring {
+  display: block;
+}
+.mini-ring circle {
+  fill: none;
+}
+.mini-ring .track {
+  stroke: rgba(var(--ink-rgb), 0.16);
+  stroke-width: 3;
+}
+.mini-ring .fill {
+  stroke: var(--ink);
+  stroke-width: 3;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 240ms ease-out;
+}
+.mini-badge {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--paper);
+  display: none;
+}
+.mini-badge.is-on {
+  display: block;
 }
 
 /* ───────── HUD ───────── */

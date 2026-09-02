@@ -176,6 +176,51 @@ export function nextRank(renown: number): Rank | null {
   return RANKS.find((r) => r.min > renown) ?? null;
 }
 
+// ───────────────────────── the piano ─────────────────────────
+
+/**
+ * Typing at a normal pace never wears the piano down — only sustained
+ * spamming does. Wear is driven by a *smoothed* typing rate (the engine's
+ * running average, not a single burst), so a quick flurry of ordinary
+ * typing never counts — only really holding a fast pace for a while does.
+ * `SAFE_KEYS_PER_SEC` sits above what sustained real typing reaches (even
+ * fast typists rarely sustain much past ~8 keys/sec); past it, wear accrues
+ * with the excess rate. `WEAR_PER_EXCESS_KEY` is tuned so ten-odd seconds of
+ * genuine mashing matters, not a single fast sentence.
+ */
+export const SAFE_KEYS_PER_SEC = 15;
+export const WEAR_PER_EXCESS_KEY = 0.6;
+export const WEAR_STUTTER_AT = 60;
+export const WEAR_BROKEN_AT = 100;
+
+/** Wear added for `dtSeconds` spent at a smoothed typing rate of `keysPerSec`. */
+export function wearFromTyping(keysPerSec: number, dtSeconds: number): number {
+  if (dtSeconds <= 0 || keysPerSec <= 0) return 0;
+  const excess = Math.max(0, keysPerSec - SAFE_KEYS_PER_SEC);
+  if (excess <= 0) return 0;
+  return excess * WEAR_PER_EXCESS_KEY * dtSeconds;
+}
+
+/** Cost to fully repair the piano from `wear` (0–100). Cheap early, steep near full wear. */
+export function repairCost(wear: number): number {
+  const w = Math.max(0, Math.min(WEAR_BROKEN_AT, wear));
+  if (w <= 0) return 0;
+  return niceRound(30 * w + 0.9 * w * w);
+}
+
+// ───────────────────────── inspiration (thinking mode) ─────────────────────────
+
+/** Ten minutes of thinking banks the maximum bonus. */
+export const INSPIRATION_CAP_SECONDS = 600;
+/** The maximum boost thinking alone can give the next piece's reception. */
+export const INSPIRATION_MAX_BONUS = 0.15;
+
+/** Reception bonus for `seconds` of banked thinking (0 – INSPIRATION_MAX_BONUS). */
+export function inspirationBonus(seconds: number): number {
+  const s = Math.max(0, Math.min(INSPIRATION_CAP_SECONDS, seconds));
+  return (s / INSPIRATION_CAP_SECONDS) * INSPIRATION_MAX_BONUS;
+}
+
 export function formatMoney(n: number): string {
   return "$" + Math.floor(n).toLocaleString("en-US");
 }

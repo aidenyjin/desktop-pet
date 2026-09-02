@@ -25,8 +25,10 @@
         for (let d = 1; d <= 60; d++) { if (skyAt(new Date(2026, 5, d, 12)).rain) { day = d; break; } }
       }
       scene.setClock(() => new Date(2026, 5, day, Math.floor(hour), Math.round((hour % 1) * 60)));
-      scene.setView({ mood: q.get("mood") ?? "idle", typingRate: Number(q.get("rate") ?? 0), tempoBpm: Number(q.get("bpm") ?? 60), reduceMotion: false,
-        ink: q.get("ink") ?? "#2e2a27", paper: q.get("paper") ?? "#b6c1b5" });
+      scene.setView({ mood: q.get("mood") ?? "idle", typingRate: Number(q.get("rate") ?? 0), tempoBpm: Number(q.get("bpm") ?? 60), reduceMotion: q.get("reduceMotion") === "1",
+        ink: q.get("ink") ?? "#2e2a27", paper: q.get("paper") ?? "#b6c1b5", wear: Number(q.get("wear") ?? 0) });
+      if (q.get("jolt")) scene.jolt();
+      if (q.get("sparkle")) scene.sparkle();
       const notes = Number(q.get("notes") ?? 0);
       if (notes) scene.emitNotes(notes);
       // Advance deterministic frames so screenshots show mid-animation states.

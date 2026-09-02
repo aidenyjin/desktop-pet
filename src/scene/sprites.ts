@@ -291,6 +291,25 @@ export const HEAD_CLOSED = sprite([
   "..############..",
 ]);
 
+/** Head, thinking (eyes raised, looking inward). 16 × 15. */
+export const HEAD_THINKING = sprite([
+  ".....#..#..#....",
+  "....#.##.##.#...",
+  "...##########...",
+  "..############..",
+  ".#############..",
+  ".#............#.",
+  "#..............#",
+  "#..##....##....#",
+  "#..............#",
+  "#..............#",
+  "#......##......#",
+  "#..............#",
+  ".#............#.",
+  ".#............#.",
+  "..############..",
+]);
+
 /** Head, delighted (eyes as arcs). 16 × 15. */
 export const HEAD_HAPPY = sprite([
   ".....#..#..#....",
@@ -357,6 +376,18 @@ export const ARM_KEYS_B = sprite([
   "...#........",
   "............",
 ]);
+/** Chin-resting arm for thinking mode: a slow reach up toward the face. 12 × 8. */
+export const ARM_CHIN = sprite([
+  "............",
+  "............",
+  ".........##.",
+  "........##..",
+  ".......##...",
+  "....#.##....",
+  "....##......",
+  "............",
+]);
+
 /** Both arms raised, spanning the torso. 22 × 9, drawn at (x − 3, y + 8). */
 export const ARMS_UP = sprite([
   ".#..................#.",
