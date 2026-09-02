@@ -87,6 +87,7 @@ export class Scene {
   private rng = mulberry32(7);
   private scale = 1;
   private windowInterior: Array<[number, number, number]> = []; // row, x0, x1 (inclusive) in window-local coords
+  private interiorByRow: Array<[number, number] | undefined> = [];
   private cloudX = 0;
   private stars: Array<[number, number, number]> = [];
   private needsDraw = true;
@@ -427,12 +428,13 @@ export class Scene {
       const last = row.lastIndexOf("#");
       if (first < 0 || last - first < 2) continue;
       this.windowInterior.push([r, first + 1, last - 1]);
+      this.interiorByRow[r] = [first + 1, last - 1];
     }
   }
 
   private inWindow(lx: number, ly: number): boolean {
-    const row = this.windowInterior.find((r) => r[0] === ly);
-    return !!row && lx >= row[1] && lx <= row[2];
+    const row = ly >= 0 ? this.interiorByRow[ly] : undefined;
+    return !!row && lx >= row[0] && lx <= row[1];
   }
 
   private drawWindow(): void {

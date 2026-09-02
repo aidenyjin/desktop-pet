@@ -94,6 +94,20 @@ describe("typing", () => {
   });
 });
 
+describe("daily count", () => {
+  it("accumulates within a day and rolls over at midnight", () => {
+    const day1 = new Date(2026, 5, 10, 14).getTime();
+    const day2 = new Date(2026, 5, 11, 9).getTime();
+    let s = startPiece(newGame(day1), "bagatelle", day1, 1).state;
+    s = applyKeys(s, 30, day1).state;
+    s = applyKeys(s, 20, day1 + 3600_000).state;
+    expect(s.stats.todayNotes).toBe(50);
+    s = applyKeys(s, 5, day2).state;
+    expect(s.stats.todayNotes).toBe(5);
+    expect(s.stats.today).toBe("2026-06-11");
+  });
+});
+
 describe("upgrades", () => {
   it("cost money and raise the level", () => {
     let s = { ...newGame(NOW), money: 1000 };

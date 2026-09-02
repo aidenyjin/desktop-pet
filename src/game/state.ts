@@ -80,6 +80,9 @@ export interface Stats {
   bestEarning: number;
   totalEarned: number;
   spent: number;
+  /** Local calendar day (YYYY-MM-DD) the `todayNotes` count belongs to. */
+  today: string;
+  todayNotes: number;
 }
 
 export interface GameState {
@@ -126,8 +129,20 @@ export function newGame(now = Date.now()): GameState {
     repertoire: [],
     inbox: [],
     settings: { ...DEFAULT_SETTINGS },
-    stats: { premieres: 0, bestEarning: 0, totalEarned: 0, spent: 0 },
+    stats: { premieres: 0, bestEarning: 0, totalEarned: 0, spent: 0, today: dayKey(now), todayNotes: 0 },
   };
+}
+
+/** Local calendar day as YYYY-MM-DD. */
+export function dayKey(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+function countToday(stats: Stats, notes: number, now: number): Stats {
+  const key = dayKey(now);
+  return key === stats.today ? { ...stats, todayNotes: stats.todayNotes + notes } : { ...stats, today: key, todayNotes: notes };
 }
 
 let idCounter = 0;
@@ -167,6 +182,7 @@ export function applyKeys(
   }
   const added = keys * notesPerKey(s.upgrades);
   s.lifetimeNotes += added;
+  s.stats = countToday(s.stats, added, now);
   events.push({ type: "notes", added });
   const piece: Piece = { ...s.current, notes: s.current.notes + added };
   if (piece.notes >= piece.target) {
@@ -376,6 +392,8 @@ export function migrate(raw: unknown): GameState | null {
       bestEarning: num(s0.bestEarning, 0, 0),
       totalEarned: num(s0.totalEarned, 0, 0),
       spent: num(s0.spent, 0, 0),
+      today: isStr(s0.today) ? s0.today : dayKey(Date.now()),
+      todayNotes: num(s0.todayNotes, 0, 0),
     },
   };
   if (state.current && state.current.notes > state.current.target) state.current.notes = state.current.target;

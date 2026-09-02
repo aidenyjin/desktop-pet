@@ -17,7 +17,8 @@
     "tauri": "tauri",
     "app:dev": "tauri dev",
     "app:build": "tauri build",
-    "app:build:universal": "tauri build --target universal-apple-darwin"
+    "app:build:universal": "tauri build --target universal-apple-darwin",
+    "e2e": "node scripts/e2e.mjs"
   },
   "dependencies": {
     "@fontsource/libre-baskerville": "^5.3.0",

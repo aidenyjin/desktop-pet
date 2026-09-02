@@ -24,6 +24,9 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Install Chromium for the browser end-to-end check
+        run: npx playwright install --with-deps chromium
+      - run: npm run e2e
 
   macos:
     name: macOS build

@@ -128,6 +128,11 @@ pub fn show<R: Runtime>(app: &AppHandle<R>, tray: Option<&Rect>) {
         let _ = win.center();
     }
 
+    // `hide` deactivates the whole app; make sure it is back before showing.
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.show();
+    }
     let _ = win.show();
     let _ = win.set_focus();
     let _ = app.emit_to(WINDOW_LABEL, "panel:shown", ());

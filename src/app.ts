@@ -119,6 +119,7 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
 
   // ── store → UI ──
   let lastBadge: boolean | null = null;
+  let lastTooltip = "";
   let lastModalKey = "";
   let lastSettingsJson = "";
   const render = (s: GameState, prev?: GameState) => {
@@ -127,6 +128,13 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
     if (badge !== lastBadge) {
       lastBadge = badge;
       void bridge.setBadge(badge).catch(() => {});
+    }
+    const tooltip = s.current
+      ? `${s.composerName || "Sonatina"} · ${s.current.title} · ${Math.floor((s.current.notes / s.current.target) * 100)}%`
+      : `${s.composerName || "Sonatina"} · nothing on the stand`;
+    if (tooltip !== lastTooltip) {
+      lastTooltip = tooltip;
+      void bridge.setTooltip(tooltip).catch(() => {});
     }
     const settingsJson = JSON.stringify(s.settings);
     if (settingsJson !== lastSettingsJson) {
@@ -239,7 +247,8 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
 
   function reset(): void {
     const s = store.get();
-    const fresh = { ...newGame(), composerName: s.composerName, settings: s.settings, onboarded: true };
+    // Carry the consumed-key counter over so the lifetime total is not replayed.
+    const fresh = { ...newGame(), composerName: s.composerName, settings: s.settings, onboarded: true, keysConsumed: s.keysConsumed };
     store.replace(fresh);
     toast.hide();
     void engine.resync();
@@ -290,6 +299,7 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
     }
   };
   bridge.onPanelVisibility(setVisible);
+  bridge.onQuit((done) => void store.flush().finally(done));
   window.addEventListener("pagehide", () => void store.flush());
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) void store.flush();

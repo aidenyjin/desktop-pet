@@ -22,6 +22,7 @@ export interface Bridge {
   hidePanel(): Promise<void>;
   panelVisible(): Promise<boolean>;
   setBadge(on: boolean): Promise<void>;
+  setTooltip(text: string): Promise<void>;
   getAutostart(): Promise<boolean>;
   setAutostart(enabled: boolean): Promise<void>;
   notify(title: string, body: string): Promise<void>;
@@ -31,6 +32,8 @@ export interface Bridge {
   relaunch(): Promise<void>;
   /** Fires when the panel is shown / hidden by the host. Returns an unsubscribe. */
   onPanelVisibility(cb: (visible: boolean) => void): () => void;
+  /** The host is about to quit; call `done` once state is saved. */
+  onQuit(cb: (done: () => void) => void): void;
 }
 
 declare global {
@@ -73,6 +76,7 @@ async function tauriBridge(): Promise<Bridge> {
     hidePanel: () => call<void>("hide_panel"),
     panelVisible: () => call<boolean>("panel_visible"),
     setBadge: (on) => call<void>("set_badge", { on }),
+    setTooltip: (text) => call<void>("set_tooltip", { text }),
     getAutostart: () => call<boolean>("get_autostart"),
     setAutostart: (enabled) => call<void>("set_autostart", { enabled }),
     notify: (title, body) => call<void>("notify", { title, body }),
@@ -80,6 +84,9 @@ async function tauriBridge(): Promise<Bridge> {
     appVersion: () => call<string>("app_version"),
     quit: () => call<void>("quit"),
     relaunch: () => call<void>("relaunch"),
+    onQuit: (cb) => {
+      void listen("app:quit", () => cb(() => void call<void>("quit_ready").catch(() => {})));
+    },
     onPanelVisibility: (cb) => {
       const subs: Array<Promise<() => void>> = [
         listen("panel:shown", () => cb(true)),
@@ -166,6 +173,7 @@ function browserBridge(): Bridge {
     setBadge: async (on) => {
       document.title = on ? "• Sonatina" : "Sonatina";
     },
+    setTooltip: async () => {},
     getAutostart: async () => localStorage.getItem("sonatina.autostart") === "1",
     setAutostart: async (enabled) => {
       localStorage.setItem("sonatina.autostart", enabled ? "1" : "0");
@@ -187,6 +195,7 @@ function browserBridge(): Bridge {
       visibilityListeners.add(cb);
       return () => visibilityListeners.delete(cb);
     },
+    onQuit: () => {},
   };
 }
 

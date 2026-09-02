@@ -18,6 +18,7 @@ import {
   buyUpgrade,
   canBuy,
   canStart,
+  dayKey,
   renamePiece,
   setSettings,
   startPiece,
@@ -235,9 +236,9 @@ function repertoireBody(app: AppContext, api: ModalApi): Node {
     h(
       "div",
       { class: "stats" },
+      h("div", null, "Today ", h("b", null, formatNumber(s.stats.today === dayKey(Date.now()) ? s.stats.todayNotes : 0)), " notes"),
+      h("div", null, "All time ", h("b", null, formatNumber(s.lifetimeNotes)), " notes"),
       h("div", null, "Premieres ", h("b", null, formatNumber(s.stats.premieres))),
-      h("div", null, "Notes written ", h("b", null, formatNumber(s.lifetimeNotes))),
-      h("div", null, "Earned ", h("b", null, formatMoney(s.stats.totalEarned))),
       h("div", null, "Best night ", h("b", null, formatMoney(s.stats.bestEarning))),
     ),
   );

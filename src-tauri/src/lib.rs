@@ -33,6 +33,9 @@ struct App {
     ledger: KeyLedger,
     save_path: std::path::PathBuf,
     badge: AtomicBool,
+    /// Set once the frontend has flushed its save during quit.
+    flushed_for_quit: AtomicBool,
+    quitting: AtomicBool,
     tray: Mutex<Option<TrayIcon>>,
     autostart_item: Mutex<Option<CheckMenuItem<tauri::Wry>>>,
 }
@@ -135,6 +138,17 @@ fn set_badge(app: AppHandle, state: State<'_, App>, on: bool) {
     let _ = app;
 }
 
+/// Hovering the menu bar icon shows what the composer is up to.
+#[tauri::command]
+fn set_tooltip(state: State<'_, App>, text: String) {
+    if let Ok(guard) = state.tray.lock() {
+        if let Some(tray) = guard.as_ref() {
+            let text = text.trim().chars().take(120).collect::<String>();
+            let _ = tray.set_tooltip(if text.is_empty() { None } else { Some(text) });
+        }
+    }
+}
+
 #[tauri::command]
 fn get_autostart(app: AppHandle) -> bool {
     app.autolaunch().is_enabled().unwrap_or(false)
@@ -193,6 +207,12 @@ fn app_version(app: AppHandle) -> String {
 fn quit(app: AppHandle) {
     flush_keys(&app);
     app.exit(0);
+}
+
+/// The frontend calls this once its save is on disk during quit.
+#[tauri::command]
+fn quit_ready(app: State<'_, App>) {
+    app.flushed_for_quit.store(true, Ordering::Relaxed);
 }
 
 #[tauri::command]
@@ -304,11 +324,23 @@ pub fn run() {
                 ledger,
                 save_path: data_dir.join("save.json"),
                 badge: AtomicBool::new(false),
+                flushed_for_quit: AtomicBool::new(false),
+                quitting: AtomicBool::new(false),
                 tray: Mutex::new(None),
                 autostart_item: Mutex::new(None),
             });
 
             build_tray(app)?;
+
+            // First launch: open the panel so the welcome is not missed.
+            if !data_dir.join("save.json").exists() {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_millis(900));
+                    let rect = handle.tray_by_id(TRAY_ID).and_then(|t| t.rect().ok().flatten());
+                    panel::show(&handle, rect.as_ref());
+                });
+            }
 
             // Start counting right away if permission was granted earlier.
             if keytap::permission() == keytap::Permission::Granted {
@@ -356,18 +388,43 @@ pub fn run() {
             hide_panel,
             panel_visible,
             set_badge,
+            set_tooltip,
             get_autostart,
             set_autostart,
             notify,
             open_url,
             app_version,
             quit,
+            quit_ready,
             relaunch,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Sonatina")
         .run(|app, event| match event {
-            tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => flush_keys(app),
+            tauri::RunEvent::ExitRequested { api, .. } => {
+                flush_keys(app);
+                let state = app.state::<App>();
+                if state.quitting.swap(true, Ordering::Relaxed) {
+                    return; // second pass: let it go
+                }
+                // Give the webview a moment to write its save, then leave.
+                api.prevent_exit();
+                use tauri::Emitter as _;
+                let _ = app.emit_to(panel::WINDOW_LABEL, "app:quit", ());
+                let handle = app.clone();
+                std::thread::spawn(move || {
+                    let deadline = std::time::Instant::now() + Duration::from_millis(600);
+                    while std::time::Instant::now() < deadline {
+                        if handle.state::<App>().flushed_for_quit.load(Ordering::Relaxed) {
+                            break;
+                        }
+                        std::thread::sleep(Duration::from_millis(20));
+                    }
+                    flush_keys(&handle);
+                    handle.exit(0);
+                });
+            }
+            tauri::RunEvent::Exit => flush_keys(app),
             #[cfg(target_os = "macos")]
             tauri::RunEvent::Reopen { .. } => {
                 let rect = app.tray_by_id(TRAY_ID).and_then(|t| t.rect().ok().flatten());
