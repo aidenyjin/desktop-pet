@@ -190,21 +190,36 @@ describe("piano wear and repair", () => {
     s = applyKeys(s, 5, NOW, Math.random, 0.15, 6).state;
     expect(s.pianoWear).toBe(0);
   });
-  it("wears from a sustained fast rate and eventually jams", () => {
+  it("wears from a sustained fast rate and eventually jams, but only after a long stretch of it", () => {
     let s = startPiece(newGame(NOW), "bagatelle", NOW, 1).state;
-    // A sustained smoothed rate well above the safe threshold, over enough
-    // real time, wears the piano down and eventually jams it.
-    for (let i = 0; i < 20; i++) s = applyKeys(s, 30, NOW + i * 1000, Math.random, 1, 30).state;
+    // A steadily fast sustained rate, well above the safe threshold. The
+    // 0–1000 scale means a short burst of it is nowhere close to jamming —
+    // only genuinely sticking with it for a couple of minutes gets there.
+    for (let i = 0; i < 10; i++) s = applyKeys(s, 25, NOW + i * 1000, Math.random, 1, 25).state;
+    expect(s.pianoWear).toBeLessThan(WEAR_BROKEN_AT * 0.2);
+    for (let i = 10; i < 200; i++) s = applyKeys(s, 25, NOW + i * 1000, Math.random, 1, 25).state;
     expect(s.pianoWear).toBe(WEAR_BROKEN_AT);
   });
-  it("stops producing notes once broken, and reports the waste", () => {
+  it("mostly wastes keystrokes once broken, but never all of them", () => {
     let s = { ...startPiece(newGame(NOW), "bagatelle", NOW, 1).state, pianoWear: WEAR_BROKEN_AT };
     const before = s.current!.notes;
-    const t = applyKeys(s, 10, NOW, Math.random, 1, 0);
+    const t = applyKeys(s, 100, NOW, Math.random, 1, 0);
     s = t.state;
-    expect(s.current!.notes).toBe(before);
-    expect(s.keysConsumed).toBe(10);
-    expect(t.events).toEqual([{ type: "wasted", keys: 10 }]);
+    expect(s.current!.notes).toBeGreaterThan(before);
+    expect(s.current!.notes - before).toBeLessThan(100 * 0.2); // a trickle, not full production
+    expect(s.keysConsumed).toBe(100);
+    expect(t.events.find((e) => e.type === "wasted")).toBeTruthy();
+  });
+  it("can never fully soft-lock: broke and jammed still earns a way out", () => {
+    // The worst case: no money, no piece, piano fully jammed. Typing
+    // through it (in bursts, as real typing arrives) must still eventually
+    // finish a piece and pay something — there is no dead end.
+    let s = { ...startPiece(newGame(NOW), "bagatelle", NOW, 1).state, pianoWear: WEAR_BROKEN_AT, money: 0 };
+    for (let i = 0; i < 2000 && s.current; i++) {
+      s = applyKeys(s, 20, NOW + i * 200, seededRandom(i), 0.2, 0).state;
+    }
+    expect(s.current).toBeNull();
+    expect(s.money).toBeGreaterThan(0);
   });
   it("repair costs money and clears the wear", () => {
     let s = { ...newGame(NOW), pianoWear: 80, money: 0 };
@@ -222,6 +237,14 @@ describe("piano wear and repair", () => {
     const s = { ...newGame(NOW), money: 1e9 };
     expect(canRepair(s)).toBe(false);
     expect(repairPiano(s)).toBe(s);
+  });
+  it("survives a save/load round trip without being clamped to a stale scale", () => {
+    // Regression: an earlier bug clamped pianoWear to 100 on migration, a
+    // leftover from before the wear scale was widened to 0–1000 — silently
+    // capping any saved wear above 10%.
+    const s = { ...newGame(NOW), pianoWear: 720 };
+    const back = migrate(JSON.parse(serialize(s)))!;
+    expect(back.pianoWear).toBe(720);
   });
 });
 

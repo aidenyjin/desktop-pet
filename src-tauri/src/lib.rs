@@ -122,6 +122,23 @@ fn panel_visible(app: AppHandle) -> bool {
     panel::is_visible(&app)
 }
 
+/// Reads the real window position (physical pixels) right now — used after
+/// a drag settles, since a real OS-driven drag can't be tracked live.
+#[tauri::command]
+fn window_position(app: AppHandle) -> Option<(i32, i32)> {
+    let win = panel::window(&app)?;
+    let pos = win.outer_position().ok()?;
+    Some((pos.x, pos.y))
+}
+
+/// Remembers where the user dragged the *full* panel to, so future opens
+/// dock there instead of under the tray icon. Pass `None` to go back to
+/// tray-docking.
+#[tauri::command]
+fn set_panel_position(panel: State<'_, PanelState>, x: Option<f64>, y: Option<f64>) {
+    panel.set_panel_position(x.zip(y));
+}
+
 #[tauri::command]
 fn set_mini(app: AppHandle, enabled: bool, x: Option<f64>, y: Option<f64>) {
     if enabled {
@@ -377,8 +394,8 @@ pub fn run() {
             // is meant to sit on screen persistently.
             if let Some(win) = panel::window(app.handle()) {
                 let handle = app.handle().clone();
-                win.on_window_event(move |event| match event {
-                    WindowEvent::Focused(false) => {
+                win.on_window_event(move |event| {
+                    if let WindowEvent::Focused(false) = event {
                         let panel_state = handle.state::<PanelState>();
                         let should_hide = !panel_state.pinned.load(Ordering::Relaxed)
                             && !panel_state.mini.load(Ordering::Relaxed)
@@ -388,13 +405,6 @@ pub fn run() {
                             panel::hide(&handle);
                         }
                     }
-                    WindowEvent::Moved(pos) => {
-                        let panel_state = handle.state::<PanelState>();
-                        if panel_state.mini.load(Ordering::Relaxed) {
-                            let _ = handle.emit_to(panel::WINDOW_LABEL, "panel:moved", *pos);
-                        }
-                    }
-                    _ => {}
                 });
             }
             Ok(())
@@ -415,6 +425,8 @@ pub fn run() {
             panel_visible,
             set_mini,
             is_mini,
+            window_position,
+            set_panel_position,
             set_badge,
             set_tooltip,
             get_autostart,

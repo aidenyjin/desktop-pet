@@ -93,17 +93,22 @@ piece's key; you can listen to a finished work in the repertoire, and
 Three small systems round out the loop:
 
 **Mini mode.** The panel can shrink to a small round, draggable widget — a
-close crop on the composer, with a thin progress ring around the edge — that
+loose crop on the composer, with a thin progress ring around the edge — that
 sits on the desktop instead of tucking away under the menu bar icon. It
 doesn't hide on blur (that would defeat the point of a widget you leave
-out), remembers where you left it, and a click expands it back. On macOS the
-drag hands off to the OS window manager (`startDragging`); the browser
+out), remembers where you left it, and a click expands it back. The *full*
+panel is draggable too — grab its header bar — and, once moved, stays put at
+that spot on future opens instead of re-docking under the tray icon. On
+macOS both hand off to the OS window manager (`startDragging`), reading the
+window's settled position back afterward rather than tracking it live
+(a real OS-driven drag can't be observed from JS mid-motion); the browser
 fallback used for development moves the element directly.
 
-**Thinking mode.** A toggle for when you're away from the keyboard but still
-want the composer "working." While on, they sit back — a raised hand, a
-slow-pulsing thought-note — and a timer quietly banks *inspiration*, capped
-at ten minutes' worth. Typing (of any kind, anywhere) always interrupts it
+**Thinking mode.** A toggle — a small note icon by the piano, or the ≡ menu —
+for when you're away from the keyboard but still want the composer
+"working." While on, they sit back — a raised hand, a slow-pulsing
+thought-note — and a timer quietly banks *inspiration*, capped at ten
+minutes' worth. Typing (of any kind, anywhere) always interrupts it
 immediately. Banked inspiration adds up to +15% to the reception of the
 *next* piece that premieres, then resets to zero — an ambient bonus for
 stepping away, not a substitute for typing.
@@ -112,12 +117,18 @@ stepping away, not a substitute for typing.
 wear is driven by a *smoothed* rate (the engine's running average, not a
 single burst), so a quick flurry of ordinary typing, or a big backlog
 arriving all at once after the panel was hidden, never registers as
-spamming. Only holding a genuinely fast pace for a few seconds does. Past
-30/60/85 wear the piano visibly cracks (60 also adds an occasional stuck-key
-stutter to the playing animation); past 100 it jams — keystrokes still
-count toward the lifetime total but stop turning into notes, with a spark
-and a flinch each time you press on regardless. Repairing costs money that
-scales steeply with how far gone it is, and resets wear to zero.
+spamming. Only holding a genuinely fast pace does, and the wear scale (0 to
+1000, not 0 to 100) means reaching a full jam takes a couple of minutes of
+sustained, genuine mashing — plenty of warning, and plenty of time to just
+stop. Past 30%/60%/85% wear the piano visibly cracks (60% also adds an
+occasional stuck-key stutter to the playing animation); past 100% it jams —
+keystrokes still count toward the lifetime total, but only a small fraction
+(12%) still turn into notes, with a spark and a flinch for the rest. That
+trickle is deliberate: no state in this game produces zero income forever,
+so there is always a way to earn a repair, however slow. Repairing costs
+money that scales steeply with how far gone it is (capped at roughly one
+nocturne's takings), and resets wear to zero. A "Start over" is also always
+one confirm away in the ≡ menu, for a clean slate.
 
 ## Scene
 

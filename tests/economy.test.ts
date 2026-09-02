@@ -137,11 +137,11 @@ describe("piano wear", () => {
   });
   it("repair is free at zero wear and expensive near broken", () => {
     expect(repairCost(0)).toBe(0);
-    expect(repairCost(10)).toBeGreaterThan(0);
-    expect(repairCost(WEAR_BROKEN_AT)).toBeGreaterThan(repairCost(50) * 2);
+    expect(repairCost(WEAR_BROKEN_AT * 0.1)).toBeGreaterThan(0);
+    expect(repairCost(WEAR_BROKEN_AT)).toBeGreaterThan(repairCost(WEAR_BROKEN_AT * 0.05) * 2);
   });
   it("clamps repair cost to the broken ceiling", () => {
-    expect(repairCost(150)).toBe(repairCost(WEAR_BROKEN_AT));
+    expect(repairCost(WEAR_BROKEN_AT * 1.5)).toBe(repairCost(WEAR_BROKEN_AT));
   });
 });
 

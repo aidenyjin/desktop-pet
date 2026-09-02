@@ -25,8 +25,10 @@ export interface Bridge {
   setMini(enabled: boolean, at: { x: number; y: number } | null): Promise<void>;
   /** Hands off an in-progress drag to the OS window manager (Tauri only). */
   startWindowDrag(): Promise<void>;
-  /** Fires with the widget's new physical position while it is being dragged in mini mode. */
-  onMoved(cb: (x: number, y: number) => void): () => void;
+  /** Reads the window's current physical position — call after a real drag settles. */
+  getWindowPosition(): Promise<{ x: number; y: number } | null>;
+  /** Remembers a custom spot for the *full* panel; `null` goes back to tray-docking. */
+  setPanelPosition(at: { x: number; y: number } | null): Promise<void>;
   setBadge(on: boolean): Promise<void>;
   setTooltip(text: string): Promise<void>;
   getAutostart(): Promise<boolean>;
@@ -86,10 +88,11 @@ async function tauriBridge(): Promise<Bridge> {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       await getCurrentWindow().startDragging();
     },
-    onMoved: (cb) => {
-      const sub = listen<{ x: number; y: number }>("panel:moved", (e) => cb(e.payload.x, e.payload.y));
-      return () => void sub.then((un) => un()).catch(() => {});
+    getWindowPosition: async () => {
+      const pos = await call<[number, number] | null>("window_position");
+      return pos ? { x: pos[0], y: pos[1] } : null;
     },
+    setPanelPosition: (at) => call<void>("set_panel_position", { x: at?.x, y: at?.y }),
     setBadge: (on) => call<void>("set_badge", { on }),
     setTooltip: (text) => call<void>("set_tooltip", { text }),
     getAutostart: () => call<boolean>("get_autostart"),
@@ -187,7 +190,8 @@ function browserBridge(): Bridge {
     panelVisible: async () => true,
     setMini: async () => {},
     startWindowDrag: async () => {},
-    onMoved: () => () => {},
+    getWindowPosition: async () => null,
+    setPanelPosition: async () => {},
     setBadge: async (on) => {
       document.title = on ? "• Sonatina" : "Sonatina";
     },

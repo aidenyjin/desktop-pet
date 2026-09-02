@@ -154,7 +154,7 @@ export class Hud {
     return h(
       "div",
       { class: `piece-hint ${broken ? "status-warn" : ""}` },
-      broken ? "The piano is jammed — notes aren't landing. " : "The piano could use some care. ",
+      broken ? "The piano is jammed — only a few keys still work. " : "The piano could use some care. ",
       h("button", { class: "link", onClick: () => this.actions.onRepair() }, `Repair — ${formatMoney(repairCost(state.pianoWear))}`),
     );
   }

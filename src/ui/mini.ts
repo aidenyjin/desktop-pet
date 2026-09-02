@@ -53,74 +53,92 @@ export function createMiniOverlay(card: HTMLElement): MiniOverlay {
   };
 }
 
-export interface MiniDragOptions {
+export interface DragOptions {
   isTauri: boolean;
+  /** Checked on pointerdown; return false to ignore this press entirely (wrong mode, landed on a real button, …). */
+  enabled: (target: EventTarget | null) => boolean;
   startWindowDrag: () => Promise<void>;
-  onExpand: () => void;
-  onDragEnd: (x: number, y: number) => void;
+  /** Tauri only: reads the window's real position once a drag has settled (a real OS-driven drag can't be tracked live). */
+  getWindowPosition?: () => Promise<{ x: number; y: number } | null>;
+  /** A drag actually happened and has a final position to remember. */
+  onDragEnd?: (x: number, y: number) => void;
+  /** A plain press-and-release with no real movement. */
+  onClick?: () => void;
 }
 
 /**
- * Wires pointer handling onto `card`: a plain click expands it back to the
- * full panel; a real drag either hands off to the OS (Tauri) or, in a
- * browser, moves the element directly by tracking the pointer.
+ * Wires pointer handling onto `surface`: a plain click fires `onClick`; a
+ * real drag either hands off to the OS window manager (Tauri, moving
+ * `moveTarget`'s whole window) or, in a browser, moves `moveTarget` directly
+ * by tracking the pointer — used for both the mini widget (surface and
+ * moveTarget are the same card; a click expands it) and the full panel
+ * (surface is a drag handle within the card; moveTarget is the card itself;
+ * no click action).
  */
-export function attachMiniDrag(card: HTMLElement, opts: MiniDragOptions): void {
+export function attachDrag(surface: HTMLElement, moveTarget: HTMLElement, opts: DragOptions): void {
   let down = false;
   let dragging = false;
   let startX = 0;
   let startY = 0;
-  const isMini = () => card.classList.contains("is-mini");
 
-  card.addEventListener("pointerdown", (e) => {
-    if (!isMini() || e.button !== 0) return;
+  surface.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || !opts.enabled(e.target)) return;
     down = true;
     dragging = false;
     startX = e.clientX;
     startY = e.clientY;
   });
 
-  card.addEventListener("pointermove", (e) => {
-    if (!down || dragging || !isMini()) return;
+  surface.addEventListener("pointermove", (e) => {
+    if (!down || dragging || !opts.enabled(e.target)) return;
     if (Math.hypot(e.clientX - startX, e.clientY - startY) < DRAG_THRESHOLD) return;
     dragging = true;
     if (opts.isTauri) {
       void opts.startWindowDrag();
     } else {
-      beginBrowserDrag(card, e, opts.onDragEnd);
+      beginBrowserDrag(moveTarget, e, opts.onDragEnd);
     }
   });
 
   const finish = () => {
-    if (down && !dragging && isMini()) opts.onExpand();
+    const wasDragging = dragging;
     down = false;
     dragging = false;
+    if (wasDragging) {
+      if (opts.isTauri && opts.getWindowPosition) {
+        void opts.getWindowPosition().then((pos) => {
+          if (pos) opts.onDragEnd?.(pos.x, pos.y);
+        });
+      }
+    } else {
+      opts.onClick?.();
+    }
   };
-  card.addEventListener("pointerup", finish);
-  card.addEventListener("pointercancel", () => {
+  surface.addEventListener("pointerup", finish);
+  surface.addEventListener("pointercancel", () => {
     down = false;
     dragging = false;
   });
 }
 
-function beginBrowserDrag(card: HTMLElement, start: PointerEvent, onEnd: (x: number, y: number) => void): void {
-  const rect = card.getBoundingClientRect();
+function beginBrowserDrag(target: HTMLElement, start: PointerEvent, onEnd?: (x: number, y: number) => void): void {
+  const rect = target.getBoundingClientRect();
   const offX = start.clientX - rect.left;
   const offY = start.clientY - rect.top;
-  card.style.right = "auto";
-  card.style.bottom = "auto";
+  target.style.right = "auto";
+  target.style.bottom = "auto";
   let last = { x: rect.left, y: rect.top };
   const move = (e: PointerEvent) => {
     const x = Math.max(0, Math.min(window.innerWidth - rect.width, e.clientX - offX));
     const y = Math.max(0, Math.min(window.innerHeight - rect.height, e.clientY - offY));
-    card.style.left = `${x}px`;
-    card.style.top = `${y}px`;
+    target.style.left = `${x}px`;
+    target.style.top = `${y}px`;
     last = { x, y };
   };
   const up = () => {
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", up);
-    onEnd(last.x, last.y);
+    onEnd?.(last.x, last.y);
   };
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", up, { once: true });

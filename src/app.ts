@@ -7,12 +7,12 @@ import { generateMelody, pentatonic, rootMidi } from "./game/melody";
 import { dismissNotice, progress, newGame, repairPiano, setSettings, startPiece, startThinking, stopThinking, type GameEvent, type GameState, type Theme, type Work } from "./game/state";
 import { Scene } from "./scene/scene";
 import { GameStore } from "./store";
-import { h } from "./ui/dom";
+import { h, icon } from "./ui/dom";
 import { Hud } from "./ui/hud";
 import { Menu, type MenuEntry } from "./ui/menu";
-import { attachMiniDrag, createMiniOverlay } from "./ui/mini";
+import { attachDrag, createMiniOverlay } from "./ui/mini";
 import { ModalHost } from "./ui/modal";
-import { openPieces, openRename, openRepertoire, openSettings, openUpgrades } from "./ui/modals";
+import { openConfirm, openPieces, openRename, openRepertoire, openSettings, openUpgrades } from "./ui/modals";
 import { runOnboarding } from "./ui/onboarding";
 import { Toast } from "./ui/toast";
 
@@ -82,6 +82,22 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
   });
   const mini = createMiniOverlay(card);
 
+  /** Browser fallback only: positions `card` via inline styles, or clears them to fall back to its default CSS position. */
+  function applyBrowserPosition(pos: { x: number; y: number } | null): void {
+    if (bridge.isTauri) return;
+    if (pos) {
+      card.style.left = `${pos.x}px`;
+      card.style.top = `${pos.y}px`;
+      card.style.right = "auto";
+      card.style.bottom = "auto";
+    } else {
+      card.style.left = "";
+      card.style.top = "";
+      card.style.right = "";
+      card.style.bottom = "";
+    }
+  }
+
   function enterMini(): void {
     if (store.get().settings.mini) return;
     menu.close();
@@ -89,31 +105,59 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
     const at = store.get().settings.miniPosition;
     store.update((s) => setSettings(s, { mini: true }), { immediate: true });
     void bridge.setMini(true, at);
+    applyBrowserPosition(at);
   }
 
   function exitMini(): void {
     if (!store.get().settings.mini) return;
     store.update((s) => setSettings(s, { mini: false }), { immediate: true });
     void bridge.setMini(false, null);
-    // A browser-fallback drag leaves inline positioning behind; the full
-    // panel is positioned by its own CSS.
-    card.style.left = "";
-    card.style.top = "";
-    card.style.right = "";
-    card.style.bottom = "";
+    applyBrowserPosition(store.get().settings.panelPosition);
   }
 
   function persistMiniPosition(x: number, y: number): void {
     store.update((s) => setSettings(s, { miniPosition: { x, y } }));
   }
 
-  attachMiniDrag(card, {
+  function persistPanelPosition(x: number, y: number): void {
+    store.update((s) => setSettings(s, { panelPosition: { x, y } }));
+    void bridge.setPanelPosition({ x, y });
+  }
+
+  // The mini widget: the whole card is the drag/click surface while shrunk.
+  attachDrag(card, card, {
     isTauri: bridge.isTauri,
+    enabled: () => card.classList.contains("is-mini"),
     startWindowDrag: () => bridge.startWindowDrag(),
-    onExpand: exitMini,
+    getWindowPosition: () => bridge.getWindowPosition(),
+    onClick: exitMini,
     onDragEnd: persistMiniPosition,
   });
-  bridge.onMoved(persistMiniPosition);
+
+  // The full panel: draggable by its header bar (not the menu button itself),
+  // remembering where you leave it instead of always re-docking under the tray.
+  attachDrag(hud.el, card, {
+    isTauri: bridge.isTauri,
+    enabled: (t) => !card.classList.contains("is-mini") && !(t instanceof Element && t.closest(".icon-btn")),
+    startWindowDrag: () => bridge.startWindowDrag(),
+    getWindowPosition: () => bridge.getWindowPosition(),
+    onDragEnd: persistPanelPosition,
+  });
+
+  // A quick toggle for thinking mode, sitting in the scene by the piano —
+  // faster than opening the menu, and a visible cue whether it's on.
+  const thinkToggle = h(
+    "button",
+    {
+      class: "icon-btn think-toggle",
+      "aria-label": "Toggle thinking mode",
+      "aria-pressed": "false",
+      title: "Thinking mode",
+      onClick: () => store.update((s) => (s.thinkingSince !== null ? stopThinking(s) : startThinking(s)), { immediate: true }),
+    },
+    icon("think"),
+  );
+  card.appendChild(thinkToggle);
 
   const menuEntries = (): MenuEntry[] => {
     const s = store.get();
@@ -125,10 +169,16 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
       "separator",
       { label: "Keep open", checked: s.settings.pinned, onSelect: () => store.update((st) => setSettings(st, { pinned: !st.settings.pinned }), { immediate: true }) },
       { label: "Shrink", checked: s.settings.mini, onSelect: () => (s.settings.mini ? exitMini() : enterMini()) },
+      "separator",
       {
-        label: "Thinking",
-        checked: s.thinkingSince !== null,
-        onSelect: () => store.update((st) => (st.thinkingSince !== null ? stopThinking(st) : startThinking(st)), { immediate: true }),
+        label: "Start over…",
+        onSelect: () =>
+          openConfirm(app, {
+            title: "Start over",
+            text: "Everything the composer has written and earned will be gone. This cannot be undone.",
+            action: "Start over",
+            onConfirm: () => reset(),
+          }),
       },
     ];
     if (bridge.isTauri) {
@@ -173,6 +223,7 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
     hud.update(s, store.unseen());
     mini.setProgress(progress(s));
     mini.setUnseen(store.unseen() > 0);
+    thinkToggle.setAttribute("aria-pressed", String(s.thinkingSince !== null));
     const badge = store.unseen() > 0;
     if (badge !== lastBadge) {
       lastBadge = badge;
@@ -342,6 +393,10 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
       scene.resize();
       scene.start();
       showNextNotice();
+      // Input Monitoring can be granted in System Settings at any time while
+      // the app sits running; there's no OS notification for that, so check
+      // again on every open rather than only at launch.
+      if (bridge.isTauri && app.permission !== "granted") void refreshListening();
     } else {
       menu.close();
       scene.stop();
@@ -370,6 +425,9 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
       await bridge.setMini(true, store.get().settings.miniPosition).catch(() => {});
       setVisible(true);
     } else {
+      // A custom drag position (if any) needs to reach the host before the
+      // next `show` — it starts each run knowing nothing about last time.
+      await bridge.setPanelPosition(store.get().settings.panelPosition).catch(() => {});
       // The panel may already be on screen if the tray was clicked during load.
       const shown = await bridge.panelVisible().catch(() => false);
       setVisible(shown);
@@ -377,13 +435,7 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
     }
   } else {
     setVisible(true);
-    if (store.get().settings.mini) {
-      const pos = store.get().settings.miniPosition;
-      if (pos) {
-        card.style.left = `${pos.x}px`;
-        card.style.top = `${pos.y}px`;
-      }
-    }
+    applyBrowserPosition(store.get().settings.mini ? store.get().settings.miniPosition : store.get().settings.panelPosition);
   }
 
   if (store.loadFailed) toast.say("The last save could not be read.", "Starting from a fresh manuscript.");

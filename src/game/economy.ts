@@ -190,8 +190,19 @@ export function nextRank(renown: number): Rank | null {
  */
 export const SAFE_KEYS_PER_SEC = 15;
 export const WEAR_PER_EXCESS_KEY = 0.6;
-export const WEAR_STUTTER_AT = 60;
-export const WEAR_BROKEN_AT = 100;
+/** The wear scale runs 0–1000 (not 0–100) so a moment of fast typing is
+ * nowhere near jamming anything — reaching a full jam takes several
+ * minutes of sustained, genuine spamming, giving plenty of warning (and
+ * plenty of time to just stop) well before it becomes a problem. */
+export const WEAR_STUTTER_AT = 600;
+export const WEAR_BROKEN_AT = 1000;
+/**
+ * Even fully jammed, the piano is stubborn, not silent: a small fraction of
+ * keystrokes still land. There is deliberately no state in this game that
+ * produces zero income forever — that would be a dead end no amount of
+ * money could climb out of.
+ */
+export const BROKEN_NOTE_EFFICIENCY = 0.12;
 
 /** Wear added for `dtSeconds` spent at a smoothed typing rate of `keysPerSec`. */
 export function wearFromTyping(keysPerSec: number, dtSeconds: number): number {
@@ -201,11 +212,16 @@ export function wearFromTyping(keysPerSec: number, dtSeconds: number): number {
   return excess * WEAR_PER_EXCESS_KEY * dtSeconds;
 }
 
-/** Cost to fully repair the piano from `wear` (0–100). Cheap early, steep near full wear. */
+/**
+ * Cost to fully repair the piano from `wear` (0–1000). Cheap early, steep
+ * near full wear, but never more than a single decent premiere or two —
+ * scaled by *fraction* worn so it stays sensible regardless of the wear
+ * scale above.
+ */
 export function repairCost(wear: number): number {
-  const w = Math.max(0, Math.min(WEAR_BROKEN_AT, wear));
-  if (w <= 0) return 0;
-  return niceRound(30 * w + 0.9 * w * w);
+  const frac = Math.max(0, Math.min(1, wear / WEAR_BROKEN_AT));
+  if (frac <= 0) return 0;
+  return niceRound(300 * frac + 2700 * frac * frac);
 }
 
 // ───────────────────────── inspiration (thinking mode) ─────────────────────────

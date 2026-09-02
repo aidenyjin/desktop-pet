@@ -129,9 +129,10 @@ try {
   });
 
   await step("thinking mode banks inspiration and typing interrupts it", async () => {
-    await page.click(".icon-btn");
-    await page.click("text=Thinking");
+    // The toggle lives as an icon in the scene (by the piano), not the menu.
+    await page.click(".think-toggle");
     await page.waitForTimeout(200);
+    assert((await page.getAttribute(".think-toggle", "aria-pressed")) === "true", "toggle shows pressed");
     assert(await page.isVisible("text=Thinking it through"), "thinking banner shown");
     // Let the store's debounced save settle before editing localStorage
     // directly, so this still-running instance's own unload-time flush (on
@@ -149,6 +150,7 @@ try {
     await page.keyboard.type("back to work");
     await page.waitForTimeout(1100);
     assert(!(await page.isVisible("text=Thinking it through")), "typing stopped thinking mode");
+    assert((await page.getAttribute(".think-toggle", "aria-pressed")) === "false", "toggle shows unpressed after typing");
     const pending = await page.evaluate(() => JSON.parse(localStorage.getItem("sonatina.save")).pendingInspirationSec);
     assert(pending > 100, `expected banked thinking time, got ${pending}`);
   });

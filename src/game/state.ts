@@ -3,6 +3,7 @@
  * No DOM, no Tauri — this file is fully covered by unit tests.
  */
 import {
+  BROKEN_NOTE_EFFICIENCY,
   FORMS,
   INSPIRATION_CAP_SECONDS,
   WEAR_BROKEN_AT,
@@ -42,6 +43,8 @@ export interface Settings {
   mini: boolean;
   /** Where the mini widget was last left, in physical screen pixels. */
   miniPosition: { x: number; y: number } | null;
+  /** Where the full panel was dragged to; null means dock under the tray icon. */
+  panelPosition: { x: number; y: number } | null;
 }
 
 export interface Piece {
@@ -115,7 +118,7 @@ export interface GameState {
   inbox: Notice[];
   settings: Settings;
   stats: Stats;
-  /** 0 (pristine) – 100 (jammed); see economy.ts for the mechanics. */
+  /** 0 (pristine) – 1000 (jammed); see economy.ts for the mechanics. */
   pianoWear: number;
   /** Timestamp thinking mode was turned on, or null while typing/idle. */
   thinkingSince: number | null;
@@ -131,6 +134,7 @@ export const DEFAULT_SETTINGS: Settings = {
   pinned: false,
   mini: false,
   miniPosition: null,
+  panelPosition: null,
 };
 
 export function newGame(now = Date.now()): GameState {
@@ -180,7 +184,7 @@ export type GameEvent =
   | { type: "notes"; added: number }
   | { type: "premiere"; work: Work; notice: Notice }
   | { type: "started"; piece: Piece }
-  /** Keystrokes that landed while the piano was jammed; no notes were written. */
+  /** Keystrokes that missed while the piano was jammed (most of them do). */
   | { type: "wasted"; keys: number };
 
 export interface Transition {
@@ -211,20 +215,27 @@ export function applyKeys(
   s = { ...s, keysConsumed: s.keysConsumed + keys };
 
   const wasBroken = s.pianoWear >= WEAR_BROKEN_AT;
-  s = { ...s, pianoWear: Math.min(100, s.pianoWear + wearFromTyping(typingRate, dtSeconds)) };
+  s = { ...s, pianoWear: Math.min(WEAR_BROKEN_AT, s.pianoWear + wearFromTyping(typingRate, dtSeconds)) };
+
+  // Stubborn, not silent: even fully jammed, a small fraction of keystrokes
+  // still land, so there is always a way to earn a way out — no state in
+  // this game produces zero income forever, however slow the trickle.
+  let effectiveKeys = keys;
   if (wasBroken) {
-    events.push({ type: "wasted", keys });
-    return { state: s, events };
+    effectiveKeys = Math.round(keys * BROKEN_NOTE_EFFICIENCY);
+    const wastedKeys = keys - effectiveKeys;
+    if (wastedKeys > 0) events.push({ type: "wasted", keys: wastedKeys });
+    if (effectiveKeys <= 0) return { state: s, events };
   }
 
   if (!s.current) {
     // Nothing on the stand: the composer sketches; keep a bounded pile of
     // spare notes so a lump of typing is not entirely wasted.
-    const added = keys * notesPerKey(s.upgrades);
+    const added = effectiveKeys * notesPerKey(s.upgrades);
     s.spareNotes = Math.min(s.spareNotes + added, spareCap(s));
     return { state: s, events };
   }
-  const added = keys * notesPerKey(s.upgrades);
+  const added = effectiveKeys * notesPerKey(s.upgrades);
   s.lifetimeNotes += added;
   s.stats = countToday(s.stats, added, now);
   events.push({ type: "notes", added });
@@ -452,6 +463,7 @@ export function migrate(raw: unknown): GameState | null {
   };
   const st = isObj(raw.settings) ? raw.settings : {};
   const miniPos = isObj(st.miniPosition) ? st.miniPosition : null;
+  const panelPos = isObj(st.panelPosition) ? st.panelPosition : null;
   const settings: Settings = {
     theme: st.theme === "paper" || st.theme === "night" || st.theme === "auto" ? st.theme : "auto",
     sound: typeof st.sound === "boolean" ? st.sound : DEFAULT_SETTINGS.sound,
@@ -460,6 +472,7 @@ export function migrate(raw: unknown): GameState | null {
     pinned: typeof st.pinned === "boolean" ? st.pinned : DEFAULT_SETTINGS.pinned,
     mini: typeof st.mini === "boolean" ? st.mini : DEFAULT_SETTINGS.mini,
     miniPosition: miniPos && isNum(miniPos.x) && isNum(miniPos.y) ? { x: miniPos.x, y: miniPos.y } : null,
+    panelPosition: panelPos && isNum(panelPos.x) && isNum(panelPos.y) ? { x: panelPos.x, y: panelPos.y } : null,
   };
   const s0 = isObj(raw.stats) ? raw.stats : {};
   const state: GameState = {
@@ -485,7 +498,7 @@ export function migrate(raw: unknown): GameState | null {
       today: isStr(s0.today) ? s0.today : dayKey(Date.now()),
       todayNotes: num(s0.todayNotes, 0, 0),
     },
-    pianoWear: Math.max(0, Math.min(100, num(raw.pianoWear, 0, 0))),
+    pianoWear: Math.max(0, Math.min(WEAR_BROKEN_AT, num(raw.pianoWear, 0, 0))),
     thinkingSince: isNum(raw.thinkingSince) && raw.thinkingSince > 0 && raw.thinkingSince <= Date.now() + 60_000 ? raw.thinkingSince : null,
     pendingInspirationSec: Math.max(0, Math.min(INSPIRATION_CAP_SECONDS, num(raw.pendingInspirationSec, 0, 0))),
   };

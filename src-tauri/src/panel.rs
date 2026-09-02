@@ -26,6 +26,9 @@ pub struct PanelState {
     /// Last known tray icon rectangle so the panel can be positioned even
     /// when shown without a click (e.g. `Reopen`).
     tray_rect: std::sync::Mutex<Option<Rect>>,
+    /// A custom position the user dragged the *full* panel to (physical
+    /// pixels). Once set, `show` docks here instead of under the tray icon.
+    panel_position: std::sync::Mutex<Option<(f64, f64)>>,
 }
 
 fn now_ms() -> u64 {
@@ -52,6 +55,16 @@ impl PanelState {
 
     pub fn blur_hid_just_now(&self) -> bool {
         now_ms().saturating_sub(self.last_blur_hide_ms.load(Ordering::Relaxed)) < 350
+    }
+
+    pub fn set_panel_position(&self, pos: Option<(f64, f64)>) {
+        if let Ok(mut p) = self.panel_position.lock() {
+            *p = pos;
+        }
+    }
+
+    pub fn panel_position(&self) -> Option<(f64, f64)> {
+        self.panel_position.lock().ok().and_then(|p| *p)
     }
 }
 
@@ -110,8 +123,14 @@ fn monitor_at<R: Runtime>(win: &WebviewWindow<R>, x: f64, y: f64) -> Option<taur
 fn clamp_to_monitor<R: Runtime>(win: &WebviewWindow<R>, x: f64, y: f64, logical_w: f64, logical_h: f64) -> (f64, f64) {
     let Some(m) = monitor_at(win, x, y) else { return (x, y) };
     let scale = m.scale_factor();
+    clamp_to_monitor_physical(win, x, y, logical_w * scale, logical_h * scale)
+}
+
+/// As `clamp_to_monitor`, but `w`/`h` are already physical pixels.
+fn clamp_to_monitor_physical<R: Runtime>(win: &WebviewWindow<R>, x: f64, y: f64, w: f64, h: f64) -> (f64, f64) {
+    let Some(m) = monitor_at(win, x, y) else { return (x, y) };
+    let scale = m.scale_factor();
     let area = m.work_area();
-    let (w, h) = (logical_w * scale, logical_h * scale);
     let pad = 4.0 * scale;
     let (ax, ay) = (area.position.x as f64, area.position.y as f64);
     let (aw, ah) = (area.size.width as f64, area.size.height as f64);
@@ -135,10 +154,26 @@ fn default_mini_position<R: Runtime>(win: &WebviewWindow<R>) -> (f64, f64) {
     (120.0, 120.0)
 }
 
-/// Positions the panel centred under the tray icon and shows it.
+/// Positions the panel and shows it: at a remembered custom spot if the
+/// user has dragged it there before, else centred under the tray icon.
 pub fn show<R: Runtime>(app: &AppHandle<R>, tray: Option<&Rect>) {
     let Some(win) = window(app) else { return };
     let state = app.state::<PanelState>();
+
+    if let Some((px, py)) = state.panel_position() {
+        let size = win.outer_size().unwrap_or(tauri::PhysicalSize::new(396, 512));
+        let (x, y) = clamp_to_monitor_physical(&win, px, py, size.width as f64, size.height as f64);
+        let _ = win.set_position(PhysicalPosition::new(x.round() as i32, y.round() as i32));
+        #[cfg(target_os = "macos")]
+        {
+            let _ = app.show();
+        }
+        let _ = win.show();
+        let _ = win.set_focus();
+        let _ = app.emit_to(WINDOW_LABEL, "panel:shown", ());
+        return;
+    }
+
     let rect = tray.cloned().or_else(|| state.tray_rect());
 
     if let Some(rect) = rect {

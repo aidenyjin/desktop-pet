@@ -128,6 +128,20 @@ try {
   await page.waitForTimeout(200);
   await shot("modal-choose");
 
+  // Full panel drag (grab the header, away from the menu button)
+  await seed(richSave);
+  const fullBox = await page.locator(".card").boundingBox();
+  await page.mouse.move(fullBox.x + 150, fullBox.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(fullBox.x + 30, fullBox.y + 150, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  await shot("main-panel-dragged");
+  await page.click(".icon-btn");
+  await page.waitForTimeout(150);
+  await shot("menu-with-reset");
+  await page.keyboard.press("Escape");
+
   // Mini widget
   await seed({ ...richSave, settings: { ...richSave.settings, mini: true, miniPosition: null } });
   await page.waitForTimeout(300);
@@ -143,9 +157,9 @@ try {
   await shot("mini-expanded-back");
 
   // Piano wear + repair banner
-  await seed({ ...richSave, pianoWear: 72 });
+  await seed({ ...richSave, pianoWear: 720 });
   await shot("main-worn");
-  await seed({ ...richSave, pianoWear: 100 });
+  await seed({ ...richSave, pianoWear: 1000 });
   await shot("main-broken");
 
   // Thinking mode

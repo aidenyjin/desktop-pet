@@ -96,7 +96,11 @@ export function runOnboarding(app: AppContext, parent: HTMLElement, onDone: (nam
           h("h2", null, "One question from macOS"),
           h("p", null, `To hear you type in other apps, macOS will ask to let Sonatina “receive keystrokes”. It only counts them — which keys you press is never recorded, stored or sent anywhere.`),
           status === "denied"
-            ? h("p", { class: "small" }, "Not allowed yet. Open System Settings → Privacy & Security → Input Monitoring, switch Sonatina on, then try again.")
+            ? h(
+                "p",
+                { class: "small" },
+                "Not allowed yet. Open System Settings → Privacy & Security → Input Monitoring, switch Sonatina on — then, if it still says no, quit and reopen Sonatina. macOS sometimes only notices a new permission after a full restart, not just a re-check.",
+              )
             : status === "waiting"
               ? h("p", { class: "small muted" }, "Waiting for the switch…")
               : h("p", { class: "small muted" }, "You can skip this; only typing inside this panel will count."),
@@ -105,6 +109,9 @@ export function runOnboarding(app: AppContext, parent: HTMLElement, onDone: (nam
         append(actions, [
           status === "denied"
             ? h("button", { class: "btn", onClick: () => void app.bridge.openInputMonitoringSettings() }, "Open System Settings")
+            : null,
+          status === "denied" && app.bridge.isTauri
+            ? h("button", { class: "btn is-quiet", onClick: () => void app.bridge.relaunch() }, "Relaunch Sonatina")
             : null,
           h(
             "button",

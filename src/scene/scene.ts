@@ -476,16 +476,16 @@ export class Scene {
   /** Cracks that appear across the piano's panels as wear climbs, worst at full wear. */
   private drawPianoWear(): void {
     const wear = this.view.wear;
-    if (wear < 30) return;
+    if (wear < WEAR_BROKEN_AT * 0.3) return;
     const ctx = this.bctx;
     ctx.fillStyle = this.view.ink;
     const { x, y } = LAYOUT.piano;
     const px = (dx: number, dy: number) => ctx.fillRect(x + dx, y + dy, 1, 1);
     // Each crack is a short jagged line in panel-local coordinates.
     const CRACKS: ReadonlyArray<{ at: number; points: ReadonlyArray<[number, number]> }> = [
-      { at: 30, points: [[10, 28], [11, 29], [11, 30], [12, 31], [12, 32]] },
-      { at: 60, points: [[17, 33], [18, 32], [18, 31], [19, 30], [19, 29], [20, 28]] },
-      { at: 85, points: [[6, 5], [7, 6], [7, 7], [8, 8]] },
+      { at: WEAR_BROKEN_AT * 0.3, points: [[10, 28], [11, 29], [11, 30], [12, 31], [12, 32]] },
+      { at: WEAR_BROKEN_AT * 0.6, points: [[17, 33], [18, 32], [18, 31], [19, 30], [19, 29], [20, 28]] },
+      { at: WEAR_BROKEN_AT * 0.85, points: [[6, 5], [7, 6], [7, 7], [8, 8]] },
       { at: WEAR_BROKEN_AT, points: [[14, 36], [15, 36], [14, 37], [16, 37], [15, 38]] },
     ];
     for (const crack of CRACKS) {
