@@ -115,6 +115,11 @@ fn hide_panel(app: AppHandle) {
 }
 
 #[tauri::command]
+fn panel_visible(app: AppHandle) -> bool {
+    panel::is_visible(&app)
+}
+
+#[tauri::command]
 fn set_badge(app: AppHandle, state: State<'_, App>, on: bool) {
     if state.badge.swap(on, Ordering::Relaxed) == on {
         return;
@@ -349,6 +354,7 @@ pub fn run() {
             save_dir,
             set_pinned,
             hide_panel,
+            panel_visible,
             set_badge,
             get_autostart,
             set_autostart,

@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  macos:
+    name: macOS build
+    runs-on: macos-latest
+    needs: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - name: Clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+      - name: Build universal app and disk image
+        run: npm run app:build:universal -- --ci
+      - name: Collect artifacts
+        run: |
+          mkdir -p out
+          cp -R src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg out/ 2>/dev/null || true
+          ditto -c -k --keepParent "src-tauri/target/universal-apple-darwin/release/bundle/macos/Sonatina.app" out/Sonatina.app.zip
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sonatina-macOS
+          path: out/*
+          if-no-files-found: error

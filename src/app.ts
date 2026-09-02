@@ -274,6 +274,8 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
   // ── visibility ──
   const setVisible = (v: boolean) => {
     visible = v;
+    // The card starts visible so a click that lands before this code runs
+    // never shows an empty window; hiding only fades it for the next show.
     card.classList.toggle("is-visible", v);
     engine.setVisible(v);
     if (v) {
@@ -297,10 +299,17 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
   // ── boot ──
   applyTheme(store.get().settings.theme);
   render(store.get());
+  card.classList.add("is-visible");
   await refreshListening();
   engine.start();
-  if (!bridge.isTauri) setVisible(true);
-  else card.classList.add("is-visible");
+  if (bridge.isTauri) {
+    // The panel may already be on screen if the tray was clicked during load.
+    const shown = await bridge.panelVisible().catch(() => false);
+    setVisible(shown);
+    if (!shown) card.classList.add("is-visible");
+  } else {
+    setVisible(true);
+  }
 
   if (store.loadFailed) toast.say("The last save could not be read.", "Starting from a fresh manuscript.");
 

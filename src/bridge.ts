@@ -20,6 +20,7 @@ export interface Bridge {
   saveDir(): Promise<string>;
   setPinned(pinned: boolean): Promise<void>;
   hidePanel(): Promise<void>;
+  panelVisible(): Promise<boolean>;
   setBadge(on: boolean): Promise<void>;
   getAutostart(): Promise<boolean>;
   setAutostart(enabled: boolean): Promise<void>;
@@ -70,6 +71,7 @@ async function tauriBridge(): Promise<Bridge> {
     saveDir: () => call<string>("save_dir"),
     setPinned: (pinned) => call<void>("set_pinned", { pinned }),
     hidePanel: () => call<void>("hide_panel"),
+    panelVisible: () => call<boolean>("panel_visible"),
     setBadge: (on) => call<void>("set_badge", { on }),
     getAutostart: () => call<boolean>("get_autostart"),
     setAutostart: (enabled) => call<void>("set_autostart", { enabled }),
@@ -160,6 +162,7 @@ function browserBridge(): Bridge {
     hidePanel: async () => {
       for (const l of visibilityListeners) l(false);
     },
+    panelVisible: async () => true,
     setBadge: async (on) => {
       document.title = on ? "• Sonatina" : "Sonatina";
     },

@@ -44,9 +44,15 @@ export class Toast {
     this.el.hidden = false;
   }
 
-  /** A plain message (no notice behind it). */
-  say(text: string, sub?: string): void {
+  private sayTimer: number | undefined;
+
+  /** A plain message (no notice behind it); fades out by itself. */
+  say(text: string, sub?: string, ms = 8000): void {
     this.notice = null;
+    if (this.sayTimer !== undefined) window.clearTimeout(this.sayTimer);
+    this.sayTimer = window.setTimeout(() => {
+      if (this.notice === null && !this.el.hidden) this.hide();
+    }, ms);
     clear(this.el);
     append(this.el, [
       h("div", null, text),
