@@ -59,13 +59,14 @@ try {
     assert(await page.isHidden(".badge"), "badge clears after dismissing");
   });
 
-  await step("a big fast-forward burst does not wear the piano", async () => {
+  await step("a big fast-forward burst does not break the piano", async () => {
     // A single large addKeys() call spikes the *instant* rate sample for one
     // tick; it must not leak into the smoothed rate enough to register as
     // spamming (that regressed once already — see engine.ts's rate cap).
     await page.waitForTimeout(500);
-    const wear = await page.evaluate(() => JSON.parse(localStorage.getItem("sonatina.save")).pianoWear);
-    assert(wear === 0, `expected no piano wear from fast-forwarding, got ${wear}`);
+    const save = await page.evaluate(() => JSON.parse(localStorage.getItem("sonatina.save")));
+    assert(save.pianoBroken === false, "expected an unbroken piano after fast-forwarding");
+    assert(save.overspeedSeconds === 0, `expected no overspeed time, got ${save.overspeedSeconds}`);
   });
 
   await step("spare notes carry into the next piece", async () => {
@@ -156,25 +157,25 @@ try {
     assert(pending > 100, `expected banked thinking time, got ${pending}`);
   });
 
-  await step("a worn piano can be repaired", async () => {
+  await step("a broken piano can be repaired", async () => {
     await page.waitForTimeout(1000);
     await page.evaluate(() => {
       const save = JSON.parse(localStorage.getItem("sonatina.save"));
-      save.pianoWear = 40;
+      save.pianoBroken = true;
       save.money = 100000;
       localStorage.setItem("sonatina.save", JSON.stringify(save));
     });
     await page.reload();
     await page.waitForSelector(".card");
-    assert(await page.isVisible("text=The piano could use some care."), "wear banner shown");
+    assert(await page.isVisible("text=The piano is broken"), "broken banner shown");
     const moneyBefore = await page.textContent(".money");
     await page.click(".piece-hint .link");
     await page.waitForTimeout(300);
-    assert(!(await page.isVisible("text=The piano could use some care.")), "wear banner cleared");
+    assert(!(await page.isVisible("text=The piano is broken")), "broken banner cleared");
     const moneyAfter = await page.textContent(".money");
     assert(moneyBefore !== moneyAfter, "repair cost money");
-    const wear = await page.evaluate(() => JSON.parse(localStorage.getItem("sonatina.save")).pianoWear);
-    assert(wear === 0, `expected wear cleared, got ${wear}`);
+    const broken = await page.evaluate(() => JSON.parse(localStorage.getItem("sonatina.save")).pianoBroken);
+    assert(broken === false, "expected the piano repaired");
   });
 
   await step("reset keeps the name and settings", async () => {

@@ -3,25 +3,25 @@
  * No DOM, no Tauri — this file is fully covered by unit tests.
  */
 import {
+  BREAK_AFTER_SECONDS,
   BROKEN_NOTE_EFFICIENCY,
   FORMS,
-  WEAR_BROKEN_AT,
+  REPAIR_COST,
+  cupboardCapacity,
   drawReception,
   formById,
   formUnlocked,
   notesPerKey,
   payoutFor,
   renownFor,
-  repairCost,
+  spamEfficiency,
   upgradeCost,
   upgradeDef,
-  wearFromTyping,
   safeKeysPerSec,
   keysPerSecToWpm,
   DEFAULT_BASELINE_WPM,
   LEARN_MAX_KEYS_PER_SEC,
   typingTestCost,
-  WEAR_RECOVERY_PER_SEC,
   type FormId,
   type UpgradeId,
   type Upgrades,
@@ -136,7 +136,9 @@ export interface GameState {
   settings: Settings;
   stats: Stats;
   /** 0 (pristine) – 1000 (jammed); see economy.ts for the mechanics. */
-  pianoWear: number;
+  pianoBroken: boolean;
+  /** Seconds spent continuously above the safe pace; zeroed the moment you slow down. */
+  overspeedSeconds: number;
   typing: Typing;
 }
 
@@ -162,13 +164,14 @@ export function newGame(now = Date.now()): GameState {
     keysConsumed: 0,
     lifetimeNotes: 0,
     spareNotes: 0,
-    upgrades: { tempo: 1, artistry: 1, ambition: 1 },
+    upgrades: { tempo: 1, artistry: 1, ambition: 1, cupboard: 1 },
     current: null,
     repertoire: [],
     inbox: [],
     settings: { ...DEFAULT_SETTINGS },
     stats: { premieres: 0, bestEarning: 0, totalEarned: 0, spent: 0, today: dayKey(now), todayNotes: 0 },
-    pianoWear: 0,
+    pianoBroken: false,
+    overspeedSeconds: 0,
     typing: { testWpm: 0, baselineWpm: DEFAULT_BASELINE_WPM, observedSeconds: 0, retakes: 0 },
   };
 }
@@ -236,13 +239,16 @@ const BASELINE_FALL_TAU = 3600;
  * that raise the baseline would mean mashing quietly teaching the game that
  * mashing is normal.
  *
- * Note the learning window is wider than the wear threshold, on purpose: a
+ * Note the learning window is wider than the spam threshold, on purpose: a
  * pace above your current threshold still counts as evidence about how fast
  * you type, so an underestimating test corrects itself instead of trapping
  * you.
  *
- * Also lets the piano heal while you are not hammering it, so a bad
- * afternoon does not follow you forever.
+ * Also runs the clock on playing too hard. Every tick above the threshold
+ * adds to `overspeedSeconds`; five continuous seconds of it breaks the
+ * piano. Any tick at or below the threshold zeroes the count outright —
+ * there is nothing to heal and nothing carried between bursts, so breaking
+ * the piano always takes five uninterrupted seconds of ignoring a warning.
  */
 const OBSERVE_MIN_KPS = 1;
 
@@ -262,12 +268,22 @@ export function observeTyping(state: GameState, keysPerSec: number, dtSeconds: n
     };
   }
 
-  // Recovery only while the pace is genuinely back under the threshold, so
-  // it can never offset active spamming.
-  const pianoWear = keysPerSec < safe ? Math.max(0, state.pianoWear - WEAR_RECOVERY_PER_SEC * dtSeconds) : state.pianoWear;
+  let { pianoBroken, overspeedSeconds } = state;
+  if (pianoBroken) {
+    // Already broken: nothing left to count until it is repaired.
+    overspeedSeconds = 0;
+  } else if (keysPerSec > safe) {
+    overspeedSeconds += dtSeconds;
+    if (overspeedSeconds >= BREAK_AFTER_SECONDS) {
+      pianoBroken = true;
+      overspeedSeconds = 0;
+    }
+  } else {
+    overspeedSeconds = 0;
+  }
 
-  if (typing === state.typing && pianoWear === state.pianoWear) return state;
-  return { ...state, typing, pianoWear };
+  if (typing === state.typing && pianoBroken === state.pianoBroken && overspeedSeconds === state.overspeedSeconds) return state;
+  return { ...state, typing, pianoBroken, overspeedSeconds };
 }
 
 /** Local calendar day as YYYY-MM-DD. */
@@ -304,18 +320,16 @@ export interface Transition {
 
 /**
  * Applies `keys` new keystrokes. Pure; `rng` only decides receptions.
- * `dtSeconds` is how long this batch spans in real time and `typingRate` is
- * the caller's *smoothed* keys-per-second (not `keys / dtSeconds`, which
- * would flag an ordinary quick burst as spam) — together they gauge piano
- * wear. Omitting either (the defaults) never wears the piano; the engine
- * passes the real tick length and its running-average typing rate.
+ * `typingRate` is the caller's *smoothed* keys-per-second — deliberately not
+ * `keys / tickLength`, which would flag an ordinary quick burst as spam — and
+ * decides how much each keystroke is worth. Omitting it (the default) gives
+ * every keystroke full value; the engine passes its running average.
  */
 export function applyKeys(
   state: GameState,
   keys: number,
   now = Date.now(),
   rng: () => number = Math.random,
-  dtSeconds = 0,
   typingRate = 0,
 ): Transition {
   const events: GameEvent[] = [];
@@ -323,19 +337,20 @@ export function applyKeys(
   let s: GameState = state;
   s = { ...s, keysConsumed: s.keysConsumed + keys };
 
-  const wasBroken = s.pianoWear >= WEAR_BROKEN_AT;
-  s = { ...s, pianoWear: Math.min(WEAR_BROKEN_AT, s.pianoWear + wearFromTyping(typingRate, dtSeconds, s.typing.baselineWpm)) };
+  // Spamming pays less per key while it is happening, and full value again
+  // as soon as the pace drops — nothing is accumulated or remembered.
+  let effectiveKeys = keys * spamEfficiency(typingRate, s.typing.baselineWpm);
 
-  // Stubborn, not silent: even fully jammed, a small fraction of keystrokes
-  // still land, so there is always a way to earn a way out — no state in
-  // this game produces zero income forever, however slow the trickle.
-  let effectiveKeys = keys;
-  if (wasBroken) {
-    effectiveKeys = Math.round(keys * BROKEN_NOTE_EFFICIENCY);
-    const wastedKeys = keys - effectiveKeys;
+  // Stubborn, not silent: even broken, a small fraction of keystrokes still
+  // land, so there is always a way to earn a way out — no state in this
+  // game produces zero income forever, however slow the trickle.
+  if (s.pianoBroken) {
+    const landed = effectiveKeys * BROKEN_NOTE_EFFICIENCY;
+    const wastedKeys = Math.round(keys - landed);
     if (wastedKeys > 0) events.push({ type: "wasted", keys: wastedKeys });
-    if (effectiveKeys <= 0) return { state: s, events };
+    effectiveKeys = landed;
   }
+  if (effectiveKeys <= 0) return { state: s, events };
 
   if (!s.current) {
     // Nothing on the stand: the composer sketches; keep a bounded pile of
@@ -363,10 +378,9 @@ export function applyKeys(
 }
 
 /** Spare notes never exceed one piece of the largest unlocked form. */
+/** How many notes of sketches the cupboard will hold. */
 export function spareCap(state: GameState): number {
-  const unlocked = FORMS.filter((f) => formUnlocked(f, state.upgrades));
-  const largest = unlocked[unlocked.length - 1] ?? FORMS[0]!;
-  return largest.notes;
+  return cupboardCapacity(state.upgrades.cupboard);
 }
 
 function premiere(state: GameState, now: number, rng: () => number): Transition {
@@ -421,7 +435,7 @@ export function canStart(state: GameState, formId: FormId): boolean {
   return !state.current && formUnlocked(formById(formId), state.upgrades);
 }
 
-/** Puts a new piece on the stand. Spare notes from the drawer are applied. */
+/** Puts a new piece on the stand. Sketches from the cupboard are applied. */
 export function startPiece(state: GameState, formId: FormId, now = Date.now(), seed = randomSeed()): Transition {
   if (!canStart(state, formId)) return { state, events: [] };
   const form = formById(formId);
@@ -457,7 +471,7 @@ export function renamePiece(state: GameState, title: string): GameState {
 
 export function abandonPiece(state: GameState): GameState {
   if (!state.current) return state;
-  // Sketches go in the drawer, bounded like everything else.
+  // Sketches go in the cupboard, bounded by its size like everything else.
   const spare = Math.min(state.spareNotes + Math.floor(state.current.notes / 2), spareCap(state));
   return { ...state, current: null, spareNotes: spare };
 }
@@ -503,14 +517,18 @@ export function progress(state: GameState): number {
 // ───────────────────────── the piano ─────────────────────────
 
 export function canRepair(state: GameState): boolean {
-  const cost = repairCost(state.pianoWear);
-  return cost > 0 && state.money >= cost;
+  return state.pianoBroken && state.money >= REPAIR_COST;
 }
 
 export function repairPiano(state: GameState): GameState {
-  const cost = repairCost(state.pianoWear);
-  if (cost <= 0 || state.money < cost) return state;
-  return { ...state, money: state.money - cost, pianoWear: 0, stats: { ...state.stats, spent: state.stats.spent + cost } };
+  if (!canRepair(state)) return state;
+  return {
+    ...state,
+    money: state.money - REPAIR_COST,
+    pianoBroken: false,
+    overspeedSeconds: 0,
+    stats: { ...state.stats, spent: state.stats.spent + REPAIR_COST },
+  };
 }
 
 // ───────────────────────── persistence ─────────────────────────
@@ -540,6 +558,7 @@ export function migrate(raw: unknown): GameState | null {
     tempo: Math.min(upgradeDef("tempo").max, Math.floor(num(up.tempo, 1, 1))),
     artistry: Math.min(upgradeDef("artistry").max, Math.floor(num(up.artistry, 1, 1))),
     ambition: Math.min(upgradeDef("ambition").max, Math.floor(num(up.ambition, 1, 1))),
+    cupboard: Math.min(upgradeDef("cupboard").max, Math.floor(num(up.cupboard, 1, 1))),
   };
   const st = isObj(raw.settings) ? raw.settings : {};
   const miniPos = isObj(st.miniPosition) ? st.miniPosition : null;
@@ -578,7 +597,10 @@ export function migrate(raw: unknown): GameState | null {
       today: isStr(s0.today) ? s0.today : dayKey(Date.now()),
       todayNotes: num(s0.todayNotes, 0, 0),
     },
-    pianoWear: Math.max(0, Math.min(WEAR_BROKEN_AT, num(raw.pianoWear, 0, 0))),
+    // Saves from before the piano broke outright carried a 0–1000 wear
+    // meter; only a fully jammed one becomes a broken piano.
+    pianoBroken: typeof raw.pianoBroken === "boolean" ? raw.pianoBroken : num(raw.pianoWear, 0, 0) >= 1000,
+    overspeedSeconds: 0,
     typing: migrateTyping(raw.typing),
   };
   if (state.current && state.current.notes > state.current.target) state.current.notes = state.current.target;

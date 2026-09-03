@@ -83,7 +83,7 @@ export class Engine {
         delta = 0;
       }
       // Exponential moving average of the typing rate — updated before
-      // applyKeys so piano wear reacts to a *sustained* pace, not this
+      // applyKeys so note value reacts to a *sustained* pace, not this
       // single tick's instantaneous (and often bursty) sample. Capped so
       // one huge one-off batch (a catch-up after the panel was hidden, a
       // test harness fast-forwarding) can't spike it on its own — only a
@@ -93,25 +93,27 @@ export class Engine {
       this.rate += (instant - this.rate) * alpha;
       if (this.rate < 0.05) this.rate = 0;
 
-      // Learn the player's pace from how they actually type, and let the
-      // piano heal while they are not hammering it. Runs every tick, not
-      // just the ones with keystrokes, so recovery works while idle too.
+      // Learn the player's pace from how they actually type, and run the
+      // clock on playing too hard. Every tick, not just the ones with
+      // keystrokes, so backing off clears the warning while idle too.
       if (state.onboarded) this.store.update((s) => observeTyping(s, this.rate, dt));
 
       if (delta > 0 && state.onboarded) {
         // Re-read: observeTyping above has already moved the state on, and
         // applyKeys replaces it wholesale.
-        const t = applyKeys(this.store.get(), delta, Date.now(), Math.random, dt, this.rate);
+        const t = applyKeys(this.store.get(), delta, Date.now(), Math.random, this.rate);
         this.store.update(() => t.state, { immediate: t.events.some((e) => e.type === "premiere") });
-        const wasted = t.events.some((e) => e.type === "wasted");
-        // A jammed piano still means you're at the keys, not away.
-        if (!wasted) this.lastKeyAt = now / 1000;
+        const broken = t.state.pianoBroken;
+        // A broken piano still means you're at the keys, not away.
+        this.lastKeyAt = now / 1000;
         this.hooks.onKeys(delta);
         if (t.events.length) this.hooks.onEvents(t.events);
         if (t.events.some((e) => e.type === "premiere")) this.premiereAt = now / 1000;
         if (this.visible) {
-          if (wasted) this.scene.jolt();
-          else this.scene.emitNotes(delta);
+          // A broken piano gets both: a jolt of debris off the keys, and the
+          // notes themselves coming out sour and falling instead of rising.
+          if (broken) this.scene.jolt();
+          this.scene.emitNotes(delta, broken);
         }
       }
       this.consecutiveErrors = 0;
@@ -137,7 +139,7 @@ export class Engine {
     else if (nowS - this.lastKeyAt > DOZE_AFTER_S || this.lastKeyAt === -Infinity) mood = "dozing";
     else mood = "idle";
     if (!state.current && mood === "playing") mood = "idle";
-    this.scene.setView({ mood, typingRate: this.rate, tempoBpm: tempoBpm(state.upgrades.tempo), wear: state.pianoWear });
+    this.scene.setView({ mood, typingRate: this.rate, tempoBpm: tempoBpm(state.upgrades.tempo), broken: state.pianoBroken });
   }
 
   /** A fresh session starts the composer awake, not dozing. */

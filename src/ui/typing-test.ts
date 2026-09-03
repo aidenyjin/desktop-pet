@@ -121,7 +121,7 @@ export function typingTest(opts: TypingTestOptions): HTMLElement[] {
       h(
         "p",
         null,
-        `Copy out the line below. It sets how hard the piano can be played before it starts to wear — measured against your pace, not a number picked for everyone.`,
+        `Copy out the line below. It sets how hard the piano can be played before the keys start counting for less — measured against your pace, not a number picked for everyone.`,
       ),
       surface,
       hint,

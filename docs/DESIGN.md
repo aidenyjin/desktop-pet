@@ -56,8 +56,10 @@ keystroke ──▶ notes (× tempo) ──▶ piece progress ──▶ premiere
 
 Payout = base × artistry multiplier × reception (0.88–1.18, skewed upward by
 artistry). The reception also picks a line of flavour text for the premiere.
-Notes written past the end of a piece go into "the drawer" and are applied to
-the next piece (never enough to finish it outright).
+Notes written past the end of a piece — and anything written with nothing on
+the stand — go into the cupboard, and are applied to the next piece (never
+enough to finish it outright). The cupboard has a size, and that size is an
+upgrade of its own.
 
 ### Upgrades
 
@@ -66,12 +68,13 @@ the next piece (never enough to finish it outright).
 | Tempo     | notes per keystroke = bpm / 60; Adagio (60) → Prestissimo (200) in 8 marks | 100, 250, 600, 1.5k, 4k, 10k, 25k |
 | Artistry  | payout × (1 + 0.15·(L‑1)), warmer receptions | 200 · 2.5^(L‑1), rounded          |
 | Ambition  | unlocks form L+1                            | 1.5 × payout of the current largest  |
+| Cupboard  | sketch capacity, 500 → 800,000 notes in 8 steps | 400, 1.2k, 4k, 12k, 40k, 120k, 350k |
 
 Clicks count as notes alongside keystrokes: the composer is keeping you
 company through a day's work, and a day's work is not all typing — reading,
 browsing and clicking through an interface should move the manuscript along
 too. Only the *down* edge of a click counts, so a click is one note and a
-drag is not a flurry of them. The same wear threshold applies, so an
+drag is not a flurry of them. The same spam threshold applies, so an
 auto-clicker is spam for exactly the same reason a held-down key is.
 
 A day of ordinary computer use is roughly 10–20k keystrokes. With 15k a day
@@ -150,31 +153,54 @@ and nothing is charged until a run actually finishes, so backing out costs
 nothing.
 
 Two windows matter here, and they are deliberately different sizes. The
-*wear* threshold is about 1.7× your own pace. The *learning* window is
+*spam* threshold is about 1.7× your own pace. The *learning* window is
 wider — anything up to 12 keys/sec is still credible as typing and counts as
-evidence. Gating learning at the wear threshold instead would be a trap: an
+evidence. Gating learning at the spam threshold instead would be a trap: an
 underestimating test could never be corrected, because the very typing that
 proved you were faster would be dismissed as spam. Mashing runs far above
 even the wider window, so it still teaches the game nothing.
 
-**Piano wear.** Wear is driven by a *smoothed* rate (the engine's running
-average, not a single burst), so a quick flurry of ordinary typing, or a big
-backlog arriving all at once after the panel was hidden, never registers as
-spamming. Only holding a pace well above *your own* does. The wear scale
-runs 0 to 1000 rather than 0 to 100 so the cracks creep in gradually: about
-ten seconds of real mashing is already visible, and a full jam takes a
-minute or two — enough warning to just stop. The piano also heals slowly
-(0.5 per second) whenever your pace is back under the threshold, so one bad
-afternoon does not follow you forever; it is far too slow to rescue active
-spamming. Past 30%/60%/85% wear the piano visibly cracks (60% also adds an
-occasional stuck-key stutter to the playing animation); past 100% it jams —
-keystrokes still count toward the lifetime total, but only a small fraction
-(12%) still turn into notes, with a spark and a flinch for the rest. That
-trickle is deliberate: no state in this game produces zero income forever,
-so there is always a way to earn a repair, however slow. Repairing costs
-money that scales steeply with how far gone it is (capped at roughly one
-nocturne's takings), and resets wear to zero. A "Start over" is also always
-one confirm away in the ≡ menu, for a clean slate.
+**Spamming pays less.** Both of the rules below read a *smoothed* rate (the
+engine's running average, not a single burst), so a quick flurry of ordinary
+typing — or a big backlog arriving at once after the panel was hidden — never
+counts as spamming. Only holding a pace well above *your own* does.
+
+The first rule is simply that mashing is bad business. Past your threshold
+every keystroke is worth steadily less, so someone hammering the keys earns
+less *per second* than someone typing normally — mashing at twice your pace
+already earns under half of what typing at it would. Nothing accumulates and
+nothing is remembered: the moment your pace drops back under the threshold,
+keystrokes are worth full value again. That makes it a nudge which corrects
+itself rather than a punishment to recover from.
+
+The floor is on *throughput*, at 15% of what your own pace earns, rather than
+on the per-key value. A flat per-key floor would mean that past a point,
+mashing twice as hard paid twice as much again, so hammering flat out could
+out-earn merely hammering; flooring the throughput instead makes earnings
+fall as you speed up and then simply stop falling, while keeping every
+keystroke worth something.
+
+**The piano breaks.** The second rule is the hard stop, and it is
+deliberately binary — there is no meter creeping up in the background and no
+partial damage to carry around. One second over the threshold puts a warning
+on the card; ignore it for five *continuous* seconds and the piano breaks
+outright. Slowing down at any point zeroes the count, so breaking one always
+takes five uninterrupted seconds of ignoring a warning, and no amount of
+short bursts will ever do it.
+
+A broken piano is stubborn rather than silent: keystrokes still count toward
+the lifetime total, but only 12% turn into notes, and those notes come out
+wrong — the play-along jangles on tritones and minor seconds up to 40 cents
+out of tune, the notes drifting up from the keys tumble downward with snapped
+stems instead, and cracks show across the piano's panels. That trickle is
+deliberate: no state in this game produces zero income forever, so there is
+always a way to earn a repair, however slow: the very worst case — penniless,
+broken, and mashing flat out so both penalties land at once — still affords
+one after about 70 minutes, or 15 of simply typing normally. Repair is a flat
+$200 — an
+annoyance rather than a setback, since the deterrent is the lost earnings
+while broken, not the bill. A "Start over" is also always one confirm away in
+the ≡ menu, for a clean slate.
 
 ## Scene
 

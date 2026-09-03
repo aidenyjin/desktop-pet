@@ -156,10 +156,8 @@ try {
   await page.waitForTimeout(400);
   await shot("mini-expanded-back");
 
-  // Piano wear + repair banner
-  await seed({ ...richSave, pianoWear: 720 });
-  await shot("main-worn");
-  await seed({ ...richSave, pianoWear: 1000 });
+  // Broken piano + repair banner
+  await seed({ ...richSave, pianoBroken: true });
   await shot("main-broken");
 
   // Thinking mode

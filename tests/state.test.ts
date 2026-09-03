@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FORMS, upgradeCost, WEAR_BROKEN_AT, WEAR_STUTTER_AT, repairCost } from "../src/game/economy";
+import { FORMS, REPAIR_COST, cupboardCapacity, notesPerKey, upgradeCost } from "../src/game/economy";
 import {
   abandonPiece,
   applyKeys,
@@ -10,6 +10,7 @@ import {
   markInboxSeen,
   migrate,
   newGame,
+  observeTyping,
   renamePiece,
   repairPiano,
   seededRandom,
@@ -178,79 +179,143 @@ describe("migration", () => {
   });
 });
 
-describe("piano wear and repair", () => {
-  it("does not wear from ordinary typing, even a quick burst", () => {
+describe("spamming, breaking and repair", () => {
+  it("pays full value for ordinary typing, even a quick burst", () => {
     let s = startPiece(newGame(NOW), "bagatelle", NOW, 1).state;
-    // A quick 5-key burst over a short tick looks fast in that one instant,
-    // but the smoothed rate the engine actually reports is well under the
-    // safe threshold — the whole point of using a smoothed rate for wear.
+    // A quick 5-key burst looks fast in that one instant, but the smoothed
+    // rate the engine reports is under the threshold — the whole point of
+    // judging spam by a smoothed rate.
     s = { ...s, typing: { ...s.typing, baselineWpm: 72 } };
-    s = applyKeys(s, 5, NOW, Math.random, 0.15, 6).state;
-    expect(s.pianoWear).toBe(0);
+    const before = s.current!.notes;
+    s = applyKeys(s, 5, NOW, Math.random, 6).state;
+    expect(s.current!.notes - before).toBeCloseTo(5 * notesPerKey(s.upgrades), 5);
+    expect(s.overspeedSeconds).toBe(0);
+    expect(s.pianoBroken).toBe(false);
   });
-  it("wears quickly from sustained mashing, and jams inside a couple of minutes", () => {
-    let s = startPiece(newGame(NOW), "bagatelle", NOW, 1).state;
-    // A steadily fast sustained rate, well above the player's threshold.
-    // Ten seconds of it is already visible as cracks — spamming is meant to
-    // be a bad idea you notice quickly, not a free ride.
-    for (let i = 0; i < 10; i++) s = applyKeys(s, 25, NOW + i * 1000, Math.random, 1, 25).state;
-    expect(s.pianoWear).toBeGreaterThan(WEAR_BROKEN_AT * 0.2);
-    expect(s.pianoWear).toBeLessThan(WEAR_STUTTER_AT);
-    for (let i = 10; i < 120; i++) s = applyKeys(s, 25, NOW + i * 1000, Math.random, 1, 25).state;
-    expect(s.pianoWear).toBe(WEAR_BROKEN_AT);
+
+  it("pays less per key while mashing, and full value again once you slow down", () => {
+    const base = { ...startPiece(newGame(NOW), "bagatelle", NOW, 1).state, typing: { ...newGame(NOW).typing, baselineWpm: 60 } };
+    const gained = (rate: number) => {
+      const t = applyKeys(base, 20, NOW, Math.random, rate);
+      return t.state.current!.notes - base.current!.notes;
+    };
+    const normal = gained(4);
+    const fast = gained(14);
+    const mashing = gained(40);
+    expect(fast).toBeLessThan(normal);
+    expect(mashing).toBeLessThan(fast);
+    // Nothing is remembered: the same keys at a calm rate pay full value
+    // again immediately, with no recovery period.
+    expect(gained(4)).toBe(normal);
   });
+
+  it("breaks only after five continuous seconds above the threshold", () => {
+    let s = { ...newGame(NOW), typing: { ...newGame(NOW).typing, baselineWpm: 50 } };
+    const fast = 30;
+    for (let i = 0; i < 4; i++) s = observeTyping(s, fast, 1);
+    expect(s.pianoBroken).toBe(false);
+    expect(s.overspeedSeconds).toBeCloseTo(4, 5);
+    s = observeTyping(s, fast, 1);
+    expect(s.pianoBroken).toBe(true);
+  });
+
+  it("wipes the count the moment you slow down — nothing accumulates", () => {
+    let s = { ...newGame(NOW), typing: { ...newGame(NOW).typing, baselineWpm: 50 } };
+    // Four seconds of mashing, a breath, then four more: never five in a row.
+    for (let round = 0; round < 6; round++) {
+      for (let i = 0; i < 4; i++) s = observeTyping(s, 30, 1);
+      expect(s.pianoBroken).toBe(false);
+      s = observeTyping(s, 1, 0.2);
+      expect(s.overspeedSeconds).toBe(0);
+    }
+    expect(s.pianoBroken).toBe(false);
+  });
+
   it("judges the same rate differently for a fast and a slow typist", () => {
-    const base = startPiece(newGame(NOW), "bagatelle", NOW, 1).state;
+    const base = newGame(NOW);
     const slow = { ...base, typing: { ...base.typing, baselineWpm: 35 } };
     const fast = { ...base, typing: { ...base.typing, baselineWpm: 120 } };
-    const rate = 9;
-    expect(applyKeys(slow, 9, NOW, Math.random, 1, rate).state.pianoWear).toBeGreaterThan(0);
-    expect(applyKeys(fast, 9, NOW, Math.random, 1, rate).state.pianoWear).toBe(0);
+    expect(observeTyping(slow, 9, 1).overspeedSeconds).toBeGreaterThan(0);
+    expect(observeTyping(fast, 9, 1).overspeedSeconds).toBe(0);
   });
+
   it("mostly wastes keystrokes once broken, but never all of them", () => {
-    let s = { ...startPiece(newGame(NOW), "bagatelle", NOW, 1).state, pianoWear: WEAR_BROKEN_AT };
+    let s = { ...startPiece(newGame(NOW), "bagatelle", NOW, 1).state, pianoBroken: true };
     const before = s.current!.notes;
-    const t = applyKeys(s, 100, NOW, Math.random, 1, 0);
+    const t = applyKeys(s, 100, NOW, Math.random, 0);
     s = t.state;
     expect(s.current!.notes).toBeGreaterThan(before);
     expect(s.current!.notes - before).toBeLessThan(100 * 0.2); // a trickle, not full production
     expect(s.keysConsumed).toBe(100);
     expect(t.events.find((e) => e.type === "wasted")).toBeTruthy();
   });
-  it("can never fully soft-lock: broke and jammed still earns a way out", () => {
-    // The worst case: no money, no piece, piano fully jammed. Typing
-    // through it (in bursts, as real typing arrives) must still eventually
-    // finish a piece and pay something — there is no dead end.
-    let s = { ...startPiece(newGame(NOW), "bagatelle", NOW, 1).state, pianoWear: WEAR_BROKEN_AT, money: 0 };
-    for (let i = 0; i < 2000 && s.current; i++) {
-      s = applyKeys(s, 20, NOW + i * 200, seededRandom(i), 0.2, 0).state;
+
+  it("can never fully soft-lock: broke and broken still earns a way out", () => {
+    // The worst case there is: no money, piano broken, and mashing flat out
+    // so both penalties land at once and every keystroke is worth the least
+    // it can be. It must still pay for a repair in finite time — no state in
+    // this game produces zero income forever. In practice this is about 70
+    // minutes of solid mashing, or 15 of simply typing normally.
+    for (const rate of [60, 4]) {
+      let s = { ...startPiece(newGame(NOW), "bagatelle", NOW, 1).state, pianoBroken: true, money: 0 };
+      let ticks = 0;
+      for (; ticks < 40_000 && s.money < REPAIR_COST; ticks++) {
+        s = applyKeys(s, Math.max(1, Math.round(rate * 0.2)), NOW + ticks * 200, seededRandom(ticks), rate).state;
+        if (!s.current) s = startPiece(s, "bagatelle", NOW + ticks * 200, ticks).state;
+      }
+      expect(s.money).toBeGreaterThanOrEqual(REPAIR_COST);
+      expect(canRepair(s)).toBe(true);
     }
-    expect(s.current).toBeNull();
-    expect(s.money).toBeGreaterThan(0);
   });
-  it("repair costs money and clears the wear", () => {
-    let s = { ...newGame(NOW), pianoWear: 80, money: 0 };
+
+  it("repair costs a flat price and puts the piano right", () => {
+    let s = { ...newGame(NOW), pianoBroken: true, money: 0 };
     expect(canRepair(s)).toBe(false);
-    s = repairPiano(s);
-    expect(s.pianoWear).toBe(80); // too poor to repair
-    s = { ...s, money: repairCost(80) };
+    expect(repairPiano(s)).toBe(s); // too poor to repair
+    s = { ...s, money: REPAIR_COST };
     expect(canRepair(s)).toBe(true);
     s = repairPiano(s);
-    expect(s.pianoWear).toBe(0);
+    expect(s.pianoBroken).toBe(false);
     expect(s.money).toBe(0);
-    expect(s.stats.spent).toBe(repairCost(80));
+    expect(s.stats.spent).toBe(REPAIR_COST);
   });
-  it("does nothing at zero wear", () => {
+
+  it("does nothing on an unbroken piano", () => {
     const s = { ...newGame(NOW), money: 1e9 };
     expect(canRepair(s)).toBe(false);
     expect(repairPiano(s)).toBe(s);
   });
-  it("survives a save/load round trip without being clamped to a stale scale", () => {
-    // Regression: an earlier bug clamped pianoWear to 100 on migration, a
-    // leftover from before the wear scale was widened to 0–1000 — silently
-    // capping any saved wear above 10%.
-    const s = { ...newGame(NOW), pianoWear: 720 };
-    const back = migrate(JSON.parse(serialize(s)))!;
-    expect(back.pianoWear).toBe(720);
+
+  it("carries a broken piano through a save/load round trip", () => {
+    const s = { ...newGame(NOW), pianoBroken: true };
+    expect(migrate(JSON.parse(serialize(s)))!.pianoBroken).toBe(true);
+    expect(migrate(JSON.parse(serialize(newGame(NOW))))!.pianoBroken).toBe(false);
+  });
+
+  it("loads a legacy save: only a fully jammed piano comes back broken", () => {
+    expect(migrate({ ...JSON.parse(serialize(newGame(NOW))), pianoBroken: undefined, pianoWear: 1000 })!.pianoBroken).toBe(true);
+    expect(migrate({ ...JSON.parse(serialize(newGame(NOW))), pianoBroken: undefined, pianoWear: 720 })!.pianoBroken).toBe(false);
+  });
+});
+
+describe("the cupboard", () => {
+  it("bounds sketches by cupboard size, not by the forms unlocked", () => {
+    let s = newGame(NOW);
+    s = applyKeys(s, 100_000, NOW).state; // nothing on the stand
+    expect(s.spareNotes).toBe(cupboardCapacity(1));
+    // Unlocking bigger forms must not quietly raise the limit any more.
+    s = { ...s, upgrades: { ...s.upgrades, ambition: 7 } };
+    s = applyKeys(s, 100_000, NOW).state;
+    expect(s.spareNotes).toBe(cupboardCapacity(1));
+  });
+  it("upgrading the cupboard makes room for more", () => {
+    let s = { ...newGame(NOW), upgrades: { ...newGame(NOW).upgrades, cupboard: 3 } };
+    s = applyKeys(s, 1_000_000, NOW).state;
+    expect(s.spareNotes).toBe(cupboardCapacity(3));
+    expect(cupboardCapacity(3)).toBeGreaterThan(cupboardCapacity(1));
+  });
+  it("clamps an oversized saved pile down to the cupboard on load", () => {
+    const s = { ...newGame(NOW), spareNotes: 999_999 };
+    expect(migrate(JSON.parse(serialize(s)))!.spareNotes).toBe(cupboardCapacity(1));
   });
 });

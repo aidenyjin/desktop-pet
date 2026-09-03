@@ -283,6 +283,17 @@ function clampMidi(midi: number): number {
   return Math.max(36, Math.min(96, Math.round(midi)));
 }
 
+/**
+ * The sound of a broken piano: a tritone, a minor second and a minor ninth
+ * against the key, so nothing you play resolves into anything. Deliberately
+ * built off the same root as `pentatonic`, so it reads as the same
+ * instrument gone wrong rather than a different one.
+ */
+export function jangle(key: KeyName): number[] {
+  const root = rootMidi(key);
+  return [root, root + 1, root + 6, root + 11, root + 13];
+}
+
 /** A few notes from the key's pentatonic set, for play-along. */
 export function pentatonic(key: KeyName, mode: Mode): number[] {
   const root = rootMidi(key);

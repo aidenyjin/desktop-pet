@@ -3,7 +3,7 @@ import { Audio } from "./audio";
 import type { Bridge, Permission } from "./bridge";
 import { Engine } from "./engine";
 import { formatMoney } from "./game/economy";
-import { generateMelody, pentatonic, rootMidi } from "./game/melody";
+import { generateMelody, jangle, pentatonic, rootMidi } from "./game/melody";
 import { canRetakeTypingTest, dismissNotice, newGame, repairPiano, retakeCost, setSettings, setTypingTest, startPiece, type GameEvent, type GameState, type Theme, type Work } from "./game/state";
 import { Scene } from "./scene/scene";
 import { GameStore } from "./store";
@@ -66,9 +66,9 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
     onRename: () => openRename(app),
     onFixListening: () => openSettings(app),
     onRepair: () => {
-      const before = store.get().pianoWear;
+      const wasBroken = store.get().pianoBroken;
       store.update((s) => repairPiano(s), { immediate: true });
-      if (store.get().pianoWear < before) scene.sparkle();
+      if (wasBroken && !store.get().pianoBroken) scene.sparkle();
     },
   });
   card.appendChild(sceneBox);
@@ -214,7 +214,11 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
   const engine = new Engine(bridge, store, scene, {
     onKeys: (n) => {
       const s = store.get();
-      if (s.settings.playAlong && s.current) audio.playAlong(pentatonic(s.current.key, s.current.mode), n);
+      // A broken piano jangles: sour intervals, and never quite in tune.
+      if (s.settings.playAlong && s.current) {
+        const scale = s.pianoBroken ? jangle(s.current.key) : pentatonic(s.current.key, s.current.mode);
+        audio.playAlong(scale, n, s.pianoBroken);
+      }
     },
     onEvents: (events) => handleEvents(events),
   });

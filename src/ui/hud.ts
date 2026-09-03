@@ -1,6 +1,6 @@
 /** Money, the menu button, and what is on the stand. */
-import { WEAR_BROKEN_AT, formatMoney, formatNumber, repairCost } from "../game/economy";
-import { progress, type GameState } from "../game/state";
+import { REPAIR_COST, WARN_AFTER_SECONDS, formatMoney, formatNumber } from "../game/economy";
+import { progress, spareCap, type GameState } from "../game/state";
 import { append, clear, h, icon } from "./dom";
 
 export interface HudActions {
@@ -64,15 +64,15 @@ export class Hud {
     this.badge.hidden = unseen === 0;
     this.badge.textContent = String(unseen);
 
-    // The status line (listening hint, piano wear) can change independently
+    // The status line (listening hint, piano warning) can change independently
     // of the piece itself, so it's kept in its own container and refreshed
     // every call rather than being tied to the piece-identity cache key
-    // below — otherwise a wear change with no piece progress to show for it
+    // below — otherwise a warning with no piece progress to show for it
     // would silently never reach the screen.
     this.updateStatus(state);
 
     const cur = state.current;
-    const key = cur ? `${cur.id}|${cur.title}|${Math.floor(cur.notes)}|${cur.target}` : `none|${Math.floor(state.spareNotes)}`;
+    const key = cur ? `${cur.id}|${cur.title}|${Math.floor(cur.notes)}|${cur.target}` : `none|${Math.floor(state.spareNotes)}|${spareCap(state)}`;
     if (key === this.lastPieceKey) return;
     const titleChanged = !cur || !this.lastPieceKey.startsWith(`${cur.id}|${cur.title}|`);
     this.lastPieceKey = key;
@@ -86,7 +86,11 @@ export class Hud {
           h("p", null, "Nothing on the stand."),
           h("button", { class: "btn", onClick: () => this.actions.onChoose() }, "Choose a piece"),
           state.spareNotes >= 1
-            ? h("p", { class: "piece-hint" }, `${formatNumber(state.spareNotes)} notes of sketches are waiting in the drawer.`)
+            ? h(
+                "p",
+                { class: "piece-hint" },
+                `${formatNumber(state.spareNotes)} / ${formatNumber(spareCap(state))} notes of sketches in the cupboard.`,
+              )
             : null,
         ),
         this.status,
@@ -131,11 +135,11 @@ export class Hud {
   }
 
   private updateStatus(state: GameState): void {
-    const key = [this.listening, this.supportsSystemWide, state.pianoWear].join("|");
+    const key = [this.listening, this.supportsSystemWide, state.pianoBroken, state.overspeedSeconds > WARN_AFTER_SECONDS].join("|");
     if (key === this.lastStatusKey) return;
     this.lastStatusKey = key;
     clear(this.status);
-    append(this.status, [this.hint(), this.wearBanner(state)]);
+    append(this.status, [this.hint(), this.pianoBanner(state)]);
   }
 
   private hint(): Node | null {
@@ -148,14 +152,19 @@ export class Hud {
     );
   }
 
-  private wearBanner(state: GameState): Node | null {
-    if (state.pianoWear <= 0) return null;
-    const broken = state.pianoWear >= WEAR_BROKEN_AT;
-    return h(
-      "div",
-      { class: `piece-hint ${broken ? "status-warn" : ""}` },
-      broken ? "The piano is jammed — only a few keys still work. " : "The piano could use some care. ",
-      h("button", { class: "link", onClick: () => this.actions.onRepair() }, `Repair — ${formatMoney(repairCost(state.pianoWear))}`),
-    );
+  /** Two states, never a meter: a warning while you are overdoing it, then a broken piano. */
+  private pianoBanner(state: GameState): Node | null {
+    if (state.pianoBroken) {
+      return h(
+        "div",
+        { class: "piece-hint status-warn" },
+        "The piano is broken — the notes come out sour, and most of them miss. ",
+        h("button", { class: "link", onClick: () => this.actions.onRepair() }, `Repair — ${formatMoney(REPAIR_COST)}`),
+      );
+    }
+    if (state.overspeedSeconds > WARN_AFTER_SECONDS) {
+      return h("div", { class: "piece-hint status-warn" }, "Steady on — the piano will not take being played this hard for long.");
+    }
+    return null;
   }
 }

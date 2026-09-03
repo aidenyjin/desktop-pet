@@ -8,8 +8,10 @@ import {
   DEFAULT_BASELINE_WPM,
   MIN_SAFE_KEYS_PER_SEC,
   MAX_SAFE_KEYS_PER_SEC,
-  WEAR_BROKEN_AT,
-  WEAR_STUTTER_AT,
+  BREAK_AFTER_SECONDS,
+  MIN_SPAM_THROUGHPUT,
+  REPAIR_COST,
+  cupboardCapacity,
   artistryMultiplier,
   drawReception,
   formatMoney,
@@ -21,8 +23,7 @@ import {
   formUnlocked,
   tempoName,
   notesPerKey,
-  wearFromTyping,
-  repairCost,
+  spamEfficiency,
 } from "../src/game/economy";
 
 describe("forms", () => {
@@ -41,7 +42,7 @@ describe("forms", () => {
     }
   });
   it("only the first form is unlocked at ambition 1", () => {
-    const up = { tempo: 1, artistry: 1, ambition: 1 };
+    const up = { tempo: 1, artistry: 1, ambition: 1, cupboard: 1 };
     expect(FORMS.filter((f) => formUnlocked(f, up)).map((f) => f.id)).toEqual(["bagatelle"]);
   });
 });
@@ -64,8 +65,8 @@ describe("upgrade costs", () => {
   it("tempo levels read as metronome markings and speed up", () => {
     expect(tempoName(1)).toBe("Adagio");
     expect(tempoName(99)).toBe("Prestissimo");
-    expect(notesPerKey({ tempo: 1, artistry: 1, ambition: 1 })).toBe(1);
-    expect(notesPerKey({ tempo: 5, artistry: 1, ambition: 1 })).toBe(2);
+    expect(notesPerKey({ tempo: 1, artistry: 1, ambition: 1, cupboard: 1 })).toBe(1);
+    expect(notesPerKey({ tempo: 5, artistry: 1, ambition: 1, cupboard: 1 })).toBe(2);
   });
   it("ambition to unlock étude costs less than a couple of bagatelles", () => {
     expect(upgradeCost("ambition", 1)).toBeLessThanOrEqual(FORMS[0]!.payout * 2);
@@ -80,8 +81,8 @@ describe("upgrade costs", () => {
 describe("payouts", () => {
   it("scale with artistry", () => {
     const form = FORMS[2]!;
-    const base = payoutFor(form, { tempo: 1, artistry: 1, ambition: 3 }, 1);
-    const better = payoutFor(form, { tempo: 1, artistry: 3, ambition: 3 }, 1);
+    const base = payoutFor(form, { tempo: 1, artistry: 1, ambition: 3, cupboard: 1 }, 1);
+    const better = payoutFor(form, { tempo: 1, artistry: 3, ambition: 3, cupboard: 1 }, 1);
     expect(base).toBe(form.payout);
     expect(better).toBe(Math.round(form.payout * artistryMultiplier(3)));
   });
@@ -150,41 +151,73 @@ describe("typing pace", () => {
   });
 });
 
-describe("piano wear", () => {
-  it("adds no wear at or under a safe typing rate", () => {
-    expect(wearFromTyping(safeKeysPerSec(DEFAULT_BASELINE_WPM), 1)).toBe(0);
-    expect(wearFromTyping(3, 1)).toBe(0);
-    expect(wearFromTyping(0, 1)).toBe(0);
+describe("spam efficiency", () => {
+  it("pays full value at or under a safe typing rate", () => {
+    expect(spamEfficiency(safeKeysPerSec(DEFAULT_BASELINE_WPM), DEFAULT_BASELINE_WPM)).toBe(1);
+    expect(spamEfficiency(3, DEFAULT_BASELINE_WPM)).toBe(1);
+    expect(spamEfficiency(0, DEFAULT_BASELINE_WPM)).toBe(1);
   });
-  it("wears faster the more the rate exceeds safe typing", () => {
+  it("falls off the further past the threshold you go, and never rises again", () => {
     const safe = safeKeysPerSec(DEFAULT_BASELINE_WPM);
-    const mild = wearFromTyping(safe + 2, 1);
-    const wild = wearFromTyping(safe + 20, 1);
-    expect(mild).toBeGreaterThan(0);
-    expect(wild).toBeGreaterThan(mild * 5);
+    let last = 1;
+    for (let over = 0; over <= 40; over += 2) {
+      const eff = spamEfficiency(safe + over, DEFAULT_BASELINE_WPM);
+      expect(eff).toBeLessThanOrEqual(last);
+      last = eff;
+    }
+    expect(spamEfficiency(safe + 2, DEFAULT_BASELINE_WPM)).toBeLessThan(1);
+    expect(spamEfficiency(safe * 2, DEFAULT_BASELINE_WPM)).toBeLessThan(0.5);
+  });
+  it("never pays nothing, however hard the mashing", () => {
+    expect(spamEfficiency(500, DEFAULT_BASELINE_WPM)).toBeGreaterThan(0);
+    expect(spamEfficiency(1e6, DEFAULT_BASELINE_WPM)).toBeGreaterThan(0);
+    expect(MIN_SPAM_THROUGHPUT).toBeGreaterThan(0);
   });
   it("judges the same rate against the player's own pace", () => {
     // 10 keys/sec is a hammering for a 40 wpm typist and a good run for a
     // 110 wpm one.
-    expect(wearFromTyping(10, 1, 40)).toBeGreaterThan(0);
-    expect(wearFromTyping(10, 1, 110)).toBe(0);
+    expect(spamEfficiency(10, 40)).toBeLessThan(1);
+    expect(spamEfficiency(10, 110)).toBe(1);
   });
-  it("mashing shows cracks in well under a minute", () => {
-    // 20 keys/sec against a default pace: stutter, then a full jam.
-    const perSecond = wearFromTyping(20, 1, DEFAULT_BASELINE_WPM);
-    expect(WEAR_STUTTER_AT / perSecond).toBeLessThan(60);
-    expect(WEAR_BROKEN_AT / perSecond).toBeLessThan(120);
+  it("earns strictly less per second the harder you mash, and never more", () => {
+    const safe = safeKeysPerSec(DEFAULT_BASELINE_WPM);
+    const honest = safe * spamEfficiency(safe, DEFAULT_BASELINE_WPM);
+    // Regression: a flat per-key floor let a hard enough mash climb back
+    // above a moderate one, so hammering flat out beat merely hammering.
+    let last = Infinity;
+    for (let rate = safe; rate <= 200; rate += 0.5) {
+      const earned = rate * spamEfficiency(rate, DEFAULT_BASELINE_WPM);
+      expect(earned).toBeLessThanOrEqual(last + 1e-9);
+      expect(earned).toBeLessThanOrEqual(honest + 1e-9);
+      last = earned;
+    }
+    expect(30 * spamEfficiency(30, DEFAULT_BASELINE_WPM)).toBeLessThan(honest * 0.5);
   });
-  it("ignores a non-positive duration", () => {
-    expect(wearFromTyping(50, 0)).toBe(0);
-    expect(wearFromTyping(50, -1)).toBe(0);
+  it("never lets mashing be worth less than a fair share of honest typing", () => {
+    const safe = safeKeysPerSec(DEFAULT_BASELINE_WPM);
+    const honest = safe * spamEfficiency(safe, DEFAULT_BASELINE_WPM);
+    expect(1000 * spamEfficiency(1000, DEFAULT_BASELINE_WPM)).toBeCloseTo(honest * MIN_SPAM_THROUGHPUT, 6);
   });
-  it("repair is free at zero wear and expensive near broken", () => {
-    expect(repairCost(0)).toBe(0);
-    expect(repairCost(WEAR_BROKEN_AT * 0.1)).toBeGreaterThan(0);
-    expect(repairCost(WEAR_BROKEN_AT)).toBeGreaterThan(repairCost(WEAR_BROKEN_AT * 0.05) * 2);
+});
+
+describe("the piano breaking", () => {
+  it("breaks after five continuous seconds, and repairs for a flat price", () => {
+    expect(BREAK_AFTER_SECONDS).toBe(5);
+    expect(REPAIR_COST).toBe(200);
   });
-  it("clamps repair cost to the broken ceiling", () => {
-    expect(repairCost(WEAR_BROKEN_AT * 1.5)).toBe(repairCost(WEAR_BROKEN_AT));
+});
+
+describe("the cupboard", () => {
+  it("grows with each level and never shrinks", () => {
+    let last = 0;
+    for (let lvl = 1; lvl <= 8; lvl++) {
+      const cap = cupboardCapacity(lvl);
+      expect(cap).toBeGreaterThan(last);
+      last = cap;
+    }
+  });
+  it("clamps to the ends of the table", () => {
+    expect(cupboardCapacity(0)).toBe(cupboardCapacity(1));
+    expect(cupboardCapacity(99)).toBe(cupboardCapacity(8));
   });
 });

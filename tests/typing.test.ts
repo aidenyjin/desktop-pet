@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { newGame, observeTyping, setTypingTest, retakeTypingTest, canRetakeTypingTest, migrate, serialize, clampWpm, MIN_BASELINE_WPM, MAX_BASELINE_WPM } from "../src/game/state";
-import { DEFAULT_BASELINE_WPM, LEARN_MAX_KEYS_PER_SEC, safeKeysPerSec, typingTestCost, wearFromTyping, wpmToKeysPerSec } from "../src/game/economy";
+import { DEFAULT_BASELINE_WPM, LEARN_MAX_KEYS_PER_SEC, safeKeysPerSec, spamEfficiency, typingTestCost, wpmToKeysPerSec } from "../src/game/economy";
 
 const NOW = 1_700_000_000_000;
 
@@ -105,7 +105,7 @@ describe("learning the baseline from real typing", () => {
     expect(slow.typing.baselineWpm).toBeGreaterThanOrEqual(MIN_BASELINE_WPM);
   });
   it("corrects an underestimating test instead of trapping the player", () => {
-    // Regression: learning was once gated at the wear threshold, so a pace
+    // Regression: learning was once gated at the spam threshold, so a pace
     // above it could never be learned — a fast typist whose test came out
     // low would be called a spammer forever, with no way to prove otherwise.
     const understated = setTypingTest(newGame(NOW), 40);
@@ -113,7 +113,8 @@ describe("learning the baseline from real typing", () => {
     expect(reallyTypesAt).toBeGreaterThan(safeKeysPerSec(40));
     const after = type(understated, reallyTypesAt, 300);
     expect(after.typing.baselineWpm).toBeGreaterThan(70);
-    expect(wearFromTyping(reallyTypesAt, 1, after.typing.baselineWpm)).toBe(0);
+    // ...and once learned, that pace is worth full value again.
+    expect(spamEfficiency(reallyTypesAt, after.typing.baselineWpm)).toBe(1);
   });
   it("mashing cannot lift the baseline to the learning ceiling", () => {
     const start = setTypingTest(newGame(NOW), 45);
@@ -128,23 +129,29 @@ describe("learning the baseline from real typing", () => {
   });
 });
 
-describe("piano recovery", () => {
-  it("heals while the pace is back under the threshold", () => {
-    const worn = { ...setTypingTest(newGame(NOW), 50), pianoWear: 400 };
-    expect(type(worn, 2, 60).pianoWear).toBeLessThan(400);
+describe("breaking the piano", () => {
+  it("leaves the piano alone at an ordinary pace, however long you type", () => {
+    const s = type(setTypingTest(newGame(NOW), 50), 2, 600);
+    expect(s.pianoBroken).toBe(false);
+    expect(s.overspeedSeconds).toBe(0);
   });
-  it("does not heal while still mashing", () => {
-    const worn = { ...setTypingTest(newGame(NOW), 50), pianoWear: 400 };
-    expect(type(worn, 30, 30).pianoWear).toBe(400);
+  it("breaks after a few seconds of sustained mashing", () => {
+    const s = type(setTypingTest(newGame(NOW), 50), 30, 30);
+    expect(s.pianoBroken).toBe(true);
   });
-  it("never heals below pristine", () => {
-    const s = { ...setTypingTest(newGame(NOW), 50), pianoWear: 5 };
-    expect(type(s, 0, 600).pianoWear).toBe(0);
+  it("survives repeated short bursts, however many, as long as you keep pausing", () => {
+    // Four seconds on, a breath off, over and over: never five in a row, so
+    // nothing ever breaks. Wear used to accumulate across bursts like this.
+    let s = setTypingTest(newGame(NOW), 50);
+    for (let i = 0; i < 40; i++) {
+      s = type(s, 30, 4);
+      s = type(s, 1, 0.5);
+    }
+    expect(s.pianoBroken).toBe(false);
   });
-  it("is slow enough that a real jam still needs repairing", () => {
-    const worn = { ...setTypingTest(newGame(NOW), 50), pianoWear: 1000 };
-    // Half a minute of calm should not undo a jam.
-    expect(type(worn, 1.5, 30).pianoWear).toBeGreaterThan(900);
+  it("does not un-break on its own — a broken piano stays broken", () => {
+    const broken = { ...setTypingTest(newGame(NOW), 50), pianoBroken: true };
+    expect(type(broken, 1.5, 600).pianoBroken).toBe(true);
   });
 });
 

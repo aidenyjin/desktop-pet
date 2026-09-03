@@ -5,7 +5,6 @@
 import * as S from "./sprites";
 import { skyAt, type SkyState } from "./sky";
 import { mulberry32 } from "../game/rng";
-import { WEAR_BROKEN_AT, WEAR_STUTTER_AT } from "../game/economy";
 
 export const SCENE_W = 180;
 export const SCENE_H = 100;
@@ -22,7 +21,7 @@ export interface SceneView {
   paper: string;
   reduceMotion: boolean;
   /** 0 (pristine) – 100 (jammed). Shows as cracks; see economy.ts thresholds. */
-  wear: number;
+  broken: boolean;
 }
 
 interface Particle {
@@ -36,6 +35,8 @@ interface Particle {
   variant: number;
   seed: number;
   landed?: boolean;
+  /** A note from a broken piano: tumbles downward instead of drifting up. */
+  sour?: boolean;
 }
 
 /** 4×4 ordered-dither thresholds. */
@@ -66,7 +67,7 @@ export class Scene {
   private readonly canvas: HTMLCanvasElement;
   private readonly buf: HTMLCanvasElement;
   private readonly bctx: CanvasRenderingContext2D;
-  private view: SceneView = { mood: "idle", typingRate: 0, tempoBpm: 60, ink: "#2e2a27", paper: "#b6c1b5", reduceMotion: false, wear: 0 };
+  private view: SceneView = { mood: "idle", typingRate: 0, tempoBpm: 60, ink: "#2e2a27", paper: "#b6c1b5", reduceMotion: false, broken: false };
   private spriteCache = new Map<string, HTMLCanvasElement>();
   private particles: Particle[] = [];
   private raf = 0;
@@ -140,20 +141,22 @@ export class Scene {
   }
 
   /** A few notes drift up from the keys. Called with the number of new keystrokes. */
-  emitNotes(n: number): void {
+  emitNotes(n: number, sour = false): void {
     const count = Math.min(3, Math.max(1, Math.round(n / 2)));
     for (let i = 0; i < count; i++) {
       const j = this.rng();
       this.particles.push({
         kind: "note",
         x: LAYOUT.notesFrom.x + (j - 0.5) * 6,
+        // A sour note has no lift in it: it spills off the keys and drops.
         y: LAYOUT.notesFrom.y - i * 2,
-        vx: (this.rng() - 0.5) * 3,
-        vy: -11 - this.rng() * 5,
+        vx: (this.rng() - 0.5) * (sour ? 8 : 3),
+        vy: sour ? 5 + this.rng() * 6 : -11 - this.rng() * 5,
         age: -i * 0.12,
-        life: 2.2 + this.rng() * 0.6,
+        life: sour ? 0.9 + this.rng() * 0.4 : 2.2 + this.rng() * 0.6,
         variant: this.rng() < 0.5 ? 0 : 1,
         seed: this.rng() * 6.28,
+        sour,
       });
     }
     if (this.particles.length > 60) this.particles.splice(0, this.particles.length - 60);
@@ -344,13 +347,14 @@ export class Scene {
         p.x += p.vx * elapsed;
         p.y += p.vy * elapsed;
       } else if (p.kind === "note" || p.kind === "sparkle") {
-        p.x += (p.vx + Math.sin(p.age * 3 + p.seed) * 5) * elapsed;
+        const wobble = p.sour ? Math.sin(p.age * 11 + p.seed) * 14 : Math.sin(p.age * 3 + p.seed) * 5;
+        p.x += (p.vx + wobble) * elapsed;
         p.y += p.vy * elapsed;
       } else {
         p.x += p.vx * elapsed;
         p.y += p.vy * elapsed;
       }
-      if (p.age < p.life && p.y > -10 && p.x > -8 && p.x < SCENE_W + 8) keep.push(p);
+      if (p.age < p.life && p.y > -10 && p.y < SCENE_H + 10 && p.x > -8 && p.x < SCENE_W + 8) keep.push(p);
     }
     this.particles = keep;
   }
@@ -367,7 +371,7 @@ export class Scene {
     this.drawClock();
     this.blit(S.RUG, LAYOUT.rug.x, LAYOUT.rug.y);
     this.blit(S.PIANO, LAYOUT.piano.x, LAYOUT.piano.y);
-    this.drawPianoWear();
+    this.drawPianoCracks();
     this.blit(S.CANDLE, LAYOUT.candle.x, LAYOUT.candle.y);
     this.blit(S.FLAME[this.flameFrame] ?? S.FLAME[0]!, LAYOUT.flame.x, LAYOUT.flame.y);
     this.drawMetronome();
@@ -401,7 +405,7 @@ export class Scene {
 
     const waking = this.time < this.wakeUntil;
     const premiere = v.mood === "premiere" || this.time < this.premiereUntil;
-    const broken = v.wear >= WEAR_BROKEN_AT;
+    const broken = v.broken;
     const jolted = this.time < this.joltUntil;
 
     if (premiere) {
@@ -420,9 +424,6 @@ export class Scene {
       if (broken) {
         // Nothing is landing; a resigned, stuck-in-place attempt.
         arm = S.ARM_KEYS_A;
-        headDy = 1;
-      } else if (v.wear >= WEAR_STUTTER_AT && !v.reduceMotion && Math.floor(this.beatIndex) % 5 === 0) {
-        arm = S.ARM_KEYS_A; // a sticking key breaks the usual alternation
         headDy = 1;
       } else {
         arm = beat ? S.ARM_KEYS_A : S.ARM_KEYS_B;
@@ -456,25 +457,21 @@ export class Scene {
     this.blit(head, x + headDx, y + headDy + torsoDy);
   }
 
-  /** Cracks that appear across the piano's panels as wear climbs, worst at full wear. */
-  private drawPianoWear(): void {
-    const wear = this.view.wear;
-    if (wear < WEAR_BROKEN_AT * 0.3) return;
+  /** Cracks across the piano's panels. The piano is whole or it is broken; there is nothing in between. */
+  private drawPianoCracks(): void {
+    if (!this.view.broken) return;
     const ctx = this.bctx;
     ctx.fillStyle = this.view.ink;
     const { x, y } = LAYOUT.piano;
     const px = (dx: number, dy: number) => ctx.fillRect(x + dx, y + dy, 1, 1);
     // Each crack is a short jagged line in panel-local coordinates.
-    const CRACKS: ReadonlyArray<{ at: number; points: ReadonlyArray<[number, number]> }> = [
-      { at: WEAR_BROKEN_AT * 0.3, points: [[10, 28], [11, 29], [11, 30], [12, 31], [12, 32]] },
-      { at: WEAR_BROKEN_AT * 0.6, points: [[17, 33], [18, 32], [18, 31], [19, 30], [19, 29], [20, 28]] },
-      { at: WEAR_BROKEN_AT * 0.85, points: [[6, 5], [7, 6], [7, 7], [8, 8]] },
-      { at: WEAR_BROKEN_AT, points: [[14, 36], [15, 36], [14, 37], [16, 37], [15, 38]] },
+    const CRACKS: ReadonlyArray<ReadonlyArray<[number, number]>> = [
+      [[10, 28], [11, 29], [11, 30], [12, 31], [12, 32]],
+      [[17, 33], [18, 32], [18, 31], [19, 30], [19, 29], [20, 28]],
+      [[6, 5], [7, 6], [7, 7], [8, 8]],
+      [[14, 36], [15, 36], [14, 37], [16, 37], [15, 38]],
     ];
-    for (const crack of CRACKS) {
-      if (wear < crack.at) continue;
-      for (const [dx, dy] of crack.points) px(dx, dy);
-    }
+    for (const crack of CRACKS) for (const [dx, dy] of crack) px(dx, dy);
   }
 
   private drawMetronome(): void {
@@ -636,7 +633,7 @@ export class Scene {
       if (p.kind === "note") {
         const fading = p.age > p.life * 0.72;
         if (fading && Math.floor(p.age * 12) % 2 === 0) continue;
-        this.blitHalo(p.variant === 0 ? S.NOTE_A : S.NOTE_B, px, py);
+        this.blitHalo(p.sour ? S.NOTE_SOUR : p.variant === 0 ? S.NOTE_A : S.NOTE_B, px, py);
       } else if (p.kind === "z") {
         const fading = p.age > p.life * 0.7;
         if (fading && Math.floor(p.age * 10) % 2 === 0) continue;

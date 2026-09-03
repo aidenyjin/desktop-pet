@@ -36,11 +36,11 @@ export class Audio {
     return this.ctx;
   }
 
-  private tone(midi: number, at: number, dur: number, vel: number, out?: GainNode): AudioNode[] {
+  private tone(midi: number, at: number, dur: number, vel: number, out?: GainNode, detuneCents = 0): AudioNode[] {
     const ctx = this.ensure();
     const dest = out ?? this.master;
     if (!ctx || !dest) return [];
-    const freq = 440 * Math.pow(2, (midi - 69) / 12);
+    const freq = 440 * Math.pow(2, (midi - 69 + detuneCents / 100) / 12);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, at);
     g.gain.exponentialRampToValueAtTime(Math.max(0.001, vel * 0.5), at + 0.012);
@@ -138,8 +138,12 @@ export class Audio {
     this.tone(root + 16, t + 0.5, 1.6, 0.4);
   }
 
-  /** Soft notes while typing, rate-limited so fast typing stays gentle. */
-  playAlong(scale: number[], keys: number): void {
+  /**
+   * Soft notes while typing, rate-limited so fast typing stays gentle. When
+   * `broken`, each note is knocked up to 40 cents out of tune, so even the
+   * same key twice never sounds the same way.
+   */
+  playAlong(scale: number[], keys: number, broken = false): void {
     const ctx = this.ensure();
     if (!ctx || !scale.length) return;
     const now = ctx.currentTime;
@@ -149,6 +153,6 @@ export class Audio {
     this.playAlongIndex = (this.playAlongIndex + step + Math.floor(Math.random() * 2)) % (scale.length * 2);
     const idx = this.playAlongIndex % scale.length;
     const octave = this.playAlongIndex >= scale.length ? 12 : 0;
-    this.tone(scale[idx]! + octave, now, 0.5, 0.3);
+    this.tone(scale[idx]! + octave, now, broken ? 0.32 : 0.5, broken ? 0.24 : 0.3, undefined, broken ? (Math.random() - 0.5) * 80 : 0);
   }
 }

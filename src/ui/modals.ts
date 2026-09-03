@@ -2,6 +2,8 @@
 import {
   FORMS,
   UPGRADES,
+  cupboardCapacity,
+  cupboardName,
   artistryMultiplier,
   formById,
   formUnlocked,
@@ -24,6 +26,7 @@ import {
   retakeCost,
   retakeTypingTest,
   setSettings,
+  spareCap,
   startPiece,
   type GameState,
   type Settings,
@@ -57,7 +60,7 @@ function piecesBody(app: AppContext, api: ModalApi): Node {
           ? h(
               "div",
               { class: "row", style: { gap: "10px", flexWrap: "wrap" } },
-              h("span", { class: "small" }, "Put it away? Half the sketches go in the drawer."),
+              h("span", { class: "small" }, "Put it away? Half the sketches go in the cupboard."),
               h(
                 "span",
                 { style: { marginLeft: "auto", display: "inline-flex", gap: "6px" } },
@@ -137,7 +140,7 @@ function piecesBody(app: AppContext, api: ModalApi): Node {
   frag.appendChild(rows);
   if (s.spareNotes >= 1) {
     frag.appendChild(
-      h("p", { class: "small muted", style: { margin: "12px 4px 0", textAlign: "center" } }, `${formatNumber(s.spareNotes)} notes of sketches in the drawer will go into the next piece.`),
+      h("p", { class: "small muted", style: { margin: "12px 4px 0", textAlign: "center" } }, `${formatNumber(s.spareNotes)} of ${formatNumber(spareCap(s))} notes of sketches in the cupboard will go into the next piece.`),
     );
   }
   return frag;
@@ -160,6 +163,8 @@ function upgradeLine(s: GameState, id: UpgradeId): string {
       const next = FORMS[lvl];
       return next ? `Ambition: ${lvl}${arrow}${lvl + 1}` : `Ambition: ${lvl}`;
     }
+    case "cupboard":
+      return lvl >= max ? `Cupboard: ${cupboardName(lvl)}` : `Cupboard: ${cupboardName(lvl)}${arrow}${cupboardName(lvl + 1)}`;
   }
 }
 
@@ -174,6 +179,8 @@ function upgradeDetail(s: GameState, id: UpgradeId): string {
       const next = FORMS[lvl];
       return next ? `Unlocks the ${next.name.toLowerCase()} (${formatNumber(next.notes)} notes).` : "Every form is within reach.";
     }
+    case "cupboard":
+      return `Holds ${formatNumber(cupboardCapacity(lvl))} notes of sketches.`;
   }
 }
 
@@ -500,7 +507,7 @@ function settingsBody(app: AppContext, api: ModalApi, extra: { autostart: boolea
           null,
           typing.testWpm > 0
             ? learned
-              ? `Measured at ${Math.round(typing.testWpm)} wpm, refined as you type. Play much faster than this and the piano wears.`
+              ? `Measured at ${Math.round(typing.testWpm)} wpm, refined as you type. Play much faster than this and the keys start counting for less — keep it up and the piano breaks.`
               : `Measured at ${Math.round(typing.testWpm)} wpm. It settles as the composer sees more of your typing.`
             : "Estimated — take the test so the piano judges you by your own pace.",
         ),

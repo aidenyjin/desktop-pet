@@ -408,6 +408,16 @@ export const NOTE_B = sprite([
   "###.##",
   ".#..#.",
 ]);
+/** A note with a snapped stem, for the notes a broken piano spills out. */
+export const NOTE_SOUR = sprite([
+  "...#.",
+  "...#.",
+  ".....",
+  "..#..",
+  ".###.",
+  "##.#.",
+  ".##..",
+]);
 export const Z_SMALL = sprite(["###", "..#", ".#.", "#..", "###"]);
 export const Z_BIG = sprite(["#####", "....#", "...#.", "..#..", ".#...", "#####"]);
 

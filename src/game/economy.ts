@@ -41,7 +41,7 @@ export function formById(id: FormId): Form {
   return f;
 }
 
-export type UpgradeId = "tempo" | "artistry" | "ambition";
+export type UpgradeId = "tempo" | "artistry" | "ambition" | "cupboard";
 
 export interface UpgradeDef {
   id: UpgradeId;
@@ -62,10 +62,38 @@ export const TEMPI: ReadonlyArray<{ name: string; bpm: number; cost: number | nu
   { name: "Prestissimo", bpm: 200, cost: null },
 ];
 
+// ───────────────────────── the cupboard ─────────────────────────
+
+/**
+ * Sketches written with nothing on the stand go into the cupboard, and the
+ * cupboard has a size. It used to borrow its capacity from the largest form
+ * you had unlocked, which made it an invisible side effect of Ambition; it
+ * is now its own upgrade with a number the player can actually see.
+ */
+export const CUPBOARD: ReadonlyArray<{ name: string; capacity: number; cost: number | null }> = [
+  { name: "A shoebox", capacity: 500, cost: 400 },
+  { name: "A desk drawer", capacity: 1_500, cost: 1_200 },
+  { name: "A filing box", capacity: 5_000, cost: 4_000 },
+  { name: "A cupboard", capacity: 15_000, cost: 12_000 },
+  { name: "A cabinet", capacity: 45_000, cost: 40_000 },
+  { name: "A wall of shelves", capacity: 120_000, cost: 120_000 },
+  { name: "The spare room", capacity: 300_000, cost: 350_000 },
+  { name: "The whole attic", capacity: 800_000, cost: null },
+];
+
+export function cupboardCapacity(level: number): number {
+  return CUPBOARD[Math.min(CUPBOARD.length, Math.max(1, level)) - 1]!.capacity;
+}
+
+export function cupboardName(level: number): string {
+  return CUPBOARD[Math.min(CUPBOARD.length, Math.max(1, level)) - 1]!.name;
+}
+
 export const UPGRADES: readonly UpgradeDef[] = [
   { id: "tempo", name: "Tempo", blurb: "More notes for every key you press.", max: TEMPI.length },
   { id: "artistry", name: "Artistry", blurb: "Finer work, warmer receptions, better pay.", max: 10 },
   { id: "ambition", name: "Ambition", blurb: "The nerve to take on larger forms.", max: FORMS.length },
+  { id: "cupboard", name: "Cupboard", blurb: "Room to keep sketches when nothing is on the stand.", max: CUPBOARD.length },
 ];
 
 export function upgradeDef(id: UpgradeId): UpgradeDef {
@@ -105,6 +133,8 @@ export function upgradeCost(id: UpgradeId, level: number): number | null {
       const current = FORMS[level - 1];
       return current ? niceRound(current.payout * 1.5) : null;
     }
+    case "cupboard":
+      return CUPBOARD[level - 1]?.cost ?? null;
   }
 }
 
@@ -217,7 +247,7 @@ export const SAFE_MARGIN = 1.7;
 
 /**
  * Floor and ceiling on the personal threshold. The floor keeps a slow or
- * mistyped test from making ordinary typing wear the piano; the ceiling
+ * mistyped test from making ordinary typing count as spam; the ceiling
  * stops an inflated test result (or a very fast typist) from buying
  * immunity to mashing. 3.5–12 keys/sec is 42–144 wpm of headroom.
  */
@@ -262,57 +292,60 @@ export function safeKeysPerSec(baselineWpm: number): number {
 }
 
 /**
- * Wear per excess key per second. Tuned so that mashing at roughly twice a
- * typical threshold shows cracks within about half a minute and jams the
- * piano inside two — fast enough that spamming is visibly a bad idea,
- * slow enough that you are never surprised by it.
+ * How much a keystroke is worth at a given pace, as a fraction of normal.
+ *
+ * Spamming is not forbidden, it is just bad business: hammer the keys and
+ * each one is worth steadily less, so a masher earns less per second than
+ * someone typing normally. Nothing accumulates and nothing is remembered —
+ * the moment the pace drops back under the threshold, keystrokes are worth
+ * full value again. That makes this a nudge that corrects itself rather
+ * than a punishment you have to recover from.
+ *
+ * The rate passed in is the engine's *smoothed* average, so an ordinary
+ * burst of fast typing never dips below full value for long.
  */
-export const WEAR_PER_EXCESS_KEY = 2;
-
-/** The wear scale runs 0–1000 (not 0–100) so a moment of fast typing is
- * nowhere near jamming anything, and the cracks have room to creep in
- * gradually — giving plenty of warning (and plenty of time to just stop)
- * well before it becomes a problem. */
-export const WEAR_STUTTER_AT = 600;
-export const WEAR_BROKEN_AT = 1000;
 /**
- * Even fully jammed, the piano is stubborn, not silent: a small fraction of
- * keystrokes still land. There is deliberately no state in this game that
- * produces zero income forever — that would be a dead end no amount of
- * money could climb out of.
+ * The worst mashing can do to you, as a fraction of what typing at your own
+ * pace earns. The floor is on *throughput* rather than on the per-key value:
+ * a flat per-key floor would mean that past a point, mashing twice as hard
+ * paid twice as much again, so hammering flat out could out-earn merely
+ * hammering. Flooring the throughput instead makes earnings fall
+ * monotonically as you speed up and then simply stop falling.
+ */
+export const MIN_SPAM_THROUGHPUT = 0.15;
+
+export function spamEfficiency(keysPerSec: number, baselineWpm = DEFAULT_BASELINE_WPM): number {
+  if (!Number.isFinite(keysPerSec) || keysPerSec <= 0) return 1;
+  const safe = safeKeysPerSec(baselineWpm);
+  const excess = keysPerSec - safe;
+  if (excess <= 0) return 1;
+  // Keys-per-second actually credited: falls away steeply past the
+  // threshold, then flattens at the floor. Never rises, at any pace.
+  const throughput = Math.max(MIN_SPAM_THROUGHPUT * safe, safe * Math.exp(-excess / (safe * 0.8)));
+  return Math.min(1, throughput / keysPerSec);
+}
+
+/**
+ * The piano breaks rather than wearing down. Playing too hard is called out
+ * within a second, and if that warning is ignored for five continuous
+ * seconds the piano breaks outright — there is no meter creeping up in the
+ * background, and no partial damage to carry around. Slowing down at any
+ * point clears the count completely, so breaking one always takes five
+ * uninterrupted seconds of ignoring a warning.
+ */
+export const WARN_AFTER_SECONDS = 1;
+export const BREAK_AFTER_SECONDS = 5;
+
+/** Flat, and cheap enough to be an annoyance rather than a setback. */
+export const REPAIR_COST = 200;
+
+/**
+ * Even broken, the piano is stubborn rather than silent: a small fraction of
+ * keystrokes still land, sour and out of tune. There is deliberately no
+ * state in this game that produces zero income forever — with a flat repair
+ * price, this trickle is what guarantees you can always earn your way out.
  */
 export const BROKEN_NOTE_EFFICIENCY = 0.12;
-
-/**
- * Wear added for `dtSeconds` spent at a smoothed typing rate of
- * `keysPerSec`, for a player whose pace is `baselineWpm`.
- */
-export function wearFromTyping(keysPerSec: number, dtSeconds: number, baselineWpm = DEFAULT_BASELINE_WPM): number {
-  if (dtSeconds <= 0 || keysPerSec <= 0) return 0;
-  const excess = Math.max(0, keysPerSec - safeKeysPerSec(baselineWpm));
-  if (excess <= 0) return 0;
-  return excess * WEAR_PER_EXCESS_KEY * dtSeconds;
-}
-
-/**
- * The piano recovers a little while you are not hammering it. Without this
- * the wear from a single bad afternoon would follow you forever, and the
- * personal threshold would feel like a trap rather than a nudge. Slow
- * enough that it never rescues active spamming.
- */
-export const WEAR_RECOVERY_PER_SEC = 0.5;
-
-/**
- * Cost to fully repair the piano from `wear` (0–1000). Cheap early, steep
- * near full wear, but never more than a single decent premiere or two —
- * scaled by *fraction* worn so it stays sensible regardless of the wear
- * scale above.
- */
-export function repairCost(wear: number): number {
-  const frac = Math.max(0, Math.min(1, wear / WEAR_BROKEN_AT));
-  if (frac <= 0) return 0;
-  return niceRound(300 * frac + 2700 * frac * frac);
-}
 
 export function formatMoney(n: number): string {
   return "$" + Math.floor(n).toLocaleString("en-US");
