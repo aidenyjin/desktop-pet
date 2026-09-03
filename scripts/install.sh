@@ -30,9 +30,20 @@ APP="src-tauri/target/$TARGET/release/bundle/macos/Sonatina.app"
 [[ -d "$APP" ]] || { echo "Build finished but $APP was not found." >&2; exit 1; }
 
 bold "Installing to /Applications…"
-if pgrep -x Sonatina >/dev/null 2>&1; then
-  osascript -e 'tell application "Sonatina" to quit' >/dev/null 2>&1 || pkill -x Sonatina || true
+# The executable inside the bundle is lowercase "sonatina", so matching on
+# "Sonatina" here silently never fired: the old copy kept running from the
+# replaced bundle, the script said "Done", and you carried on using the
+# previous build. It also skipped the graceful quit, and with it the save
+# handshake.
+if pgrep -x sonatina >/dev/null 2>&1; then
+  osascript -e 'tell application "Sonatina" to quit' >/dev/null 2>&1 || true
+  for _ in 1 2 3 4 5; do
+    pgrep -x sonatina >/dev/null 2>&1 || break
+    sleep 1
+  done
+  pgrep -x sonatina >/dev/null 2>&1 && pkill -x sonatina || true
   sleep 1
+  RELAUNCH=1
 fi
 rm -rf /Applications/Sonatina.app
 ditto "$APP" /Applications/Sonatina.app
@@ -40,4 +51,7 @@ ditto "$APP" /Applications/Sonatina.app
 bold "Done."
 echo "Open it with:  open -a Sonatina"
 echo "It lives in the menu bar. When macOS asks, allow Input Monitoring so the composer can hear you type."
-if [[ "${1:-}" == "--open" ]]; then open -a Sonatina; fi
+if [[ "${1:-}" == "--open" || "${RELAUNCH:-}" == "1" ]]; then
+  open -a Sonatina
+  echo "Relaunched Sonatina on the new build."
+fi

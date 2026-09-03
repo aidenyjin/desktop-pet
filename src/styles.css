@@ -1134,3 +1134,44 @@ body.in-browser .card {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* ───────── typing test ───────── */
+/* The phrase to copy out, with each character marked right or wrong as you
+   go. Monospaced so the line does not reflow under the cursor while typing. */
+.typing-phrase {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  text-align: left;
+  margin: 10px auto 12px;
+  max-width: 280px;
+  white-space: pre-wrap;
+  opacity: 0.55;
+  user-select: none;
+}
+.typing-phrase .is-right {
+  opacity: 1;
+  color: var(--ink);
+  font-weight: 700;
+}
+.typing-phrase .is-wrong {
+  opacity: 1;
+  color: var(--accent);
+  text-decoration: underline wavy;
+}
+.typing-phrase .is-cursor {
+  box-shadow: inset 2px 0 0 var(--accent);
+  border-radius: 1px;
+}
+.typing-input {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  margin: 0 auto;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+}
+.small.is-warn {
+  color: var(--accent);
+  opacity: 1;
+}

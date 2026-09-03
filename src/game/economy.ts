@@ -180,20 +180,79 @@ export function nextRank(renown: number): Rank | null {
 
 /**
  * Typing at a normal pace never wears the piano down — only sustained
- * spamming does. Wear is driven by a *smoothed* typing rate (the engine's
- * running average, not a single burst), so a quick flurry of ordinary
- * typing never counts — only really holding a fast pace for a while does.
- * `SAFE_KEYS_PER_SEC` sits above what sustained real typing reaches (even
- * fast typists rarely sustain much past ~8 keys/sec); past it, wear accrues
- * with the excess rate. `WEAR_PER_EXCESS_KEY` is tuned so ten-odd seconds of
- * genuine mashing matters, not a single fast sentence.
+ * spamming does. What counts as "sustained spamming" is *personal*: a
+ * threshold fixed for everyone is either free money for a fast typist or a
+ * punishment for a slow one. So the game learns your pace — from a short
+ * test on first run, then from how you actually type — and measures
+ * spamming against that.
+ *
+ * Wear is driven by a *smoothed* typing rate (the engine's running average,
+ * not a single burst), so a quick flurry of ordinary typing never counts.
  */
-export const SAFE_KEYS_PER_SEC = 15;
-export const WEAR_PER_EXCESS_KEY = 0.6;
+
+/** The typing-test convention: one "word" is five keystrokes. */
+export const KEYS_PER_WORD = 5;
+
+export function wpmToKeysPerSec(wpm: number): number {
+  return (wpm * KEYS_PER_WORD) / 60;
+}
+
+export function keysPerSecToWpm(keysPerSec: number): number {
+  return (keysPerSec * 60) / KEYS_PER_WORD;
+}
+
+/**
+ * Assumed pace when the first-run test is skipped — a middling typist. It
+ * only sets the starting point; the baseline adapts from real typing within
+ * a few minutes of use either way.
+ */
+export const DEFAULT_BASELINE_WPM = 45;
+
+/**
+ * How far above your own pace counts as spamming rather than a good run.
+ * Real typing is bursty — a familiar phrase can briefly run well above your
+ * average — so the threshold sits comfortably clear of it.
+ */
+export const SAFE_MARGIN = 1.7;
+
+/**
+ * Floor and ceiling on the personal threshold. The floor keeps a slow or
+ * mistyped test from making ordinary typing wear the piano; the ceiling
+ * stops an inflated test result (or a very fast typist) from buying
+ * immunity to mashing. 3.5–12 keys/sec is 42–144 wpm of headroom.
+ */
+export const MIN_SAFE_KEYS_PER_SEC = 3.5;
+export const MAX_SAFE_KEYS_PER_SEC = 12;
+
+/**
+ * The fastest pace still credible as real typing, and so the most the
+ * baseline will ever learn from. This is deliberately *higher* than any
+ * individual's spam threshold: gating learning at the threshold itself
+ * would be a trap — an underestimating test could never be corrected,
+ * because the very typing that proves you are faster would be dismissed as
+ * spam. Mashing runs far above even this, so it still teaches nothing.
+ */
+export const LEARN_MAX_KEYS_PER_SEC = 12;
+
+/** The spam threshold, in keys per second, for someone whose pace is `baselineWpm`. */
+export function safeKeysPerSec(baselineWpm: number): number {
+  const wpm = Number.isFinite(baselineWpm) && baselineWpm > 0 ? baselineWpm : DEFAULT_BASELINE_WPM;
+  const kps = wpmToKeysPerSec(wpm) * SAFE_MARGIN;
+  return Math.max(MIN_SAFE_KEYS_PER_SEC, Math.min(MAX_SAFE_KEYS_PER_SEC, kps));
+}
+
+/**
+ * Wear per excess key per second. Tuned so that mashing at roughly twice a
+ * typical threshold shows cracks within about half a minute and jams the
+ * piano inside two — fast enough that spamming is visibly a bad idea,
+ * slow enough that you are never surprised by it.
+ */
+export const WEAR_PER_EXCESS_KEY = 2;
+
 /** The wear scale runs 0–1000 (not 0–100) so a moment of fast typing is
- * nowhere near jamming anything — reaching a full jam takes several
- * minutes of sustained, genuine spamming, giving plenty of warning (and
- * plenty of time to just stop) well before it becomes a problem. */
+ * nowhere near jamming anything, and the cracks have room to creep in
+ * gradually — giving plenty of warning (and plenty of time to just stop)
+ * well before it becomes a problem. */
 export const WEAR_STUTTER_AT = 600;
 export const WEAR_BROKEN_AT = 1000;
 /**
@@ -204,13 +263,24 @@ export const WEAR_BROKEN_AT = 1000;
  */
 export const BROKEN_NOTE_EFFICIENCY = 0.12;
 
-/** Wear added for `dtSeconds` spent at a smoothed typing rate of `keysPerSec`. */
-export function wearFromTyping(keysPerSec: number, dtSeconds: number): number {
+/**
+ * Wear added for `dtSeconds` spent at a smoothed typing rate of
+ * `keysPerSec`, for a player whose pace is `baselineWpm`.
+ */
+export function wearFromTyping(keysPerSec: number, dtSeconds: number, baselineWpm = DEFAULT_BASELINE_WPM): number {
   if (dtSeconds <= 0 || keysPerSec <= 0) return 0;
-  const excess = Math.max(0, keysPerSec - SAFE_KEYS_PER_SEC);
+  const excess = Math.max(0, keysPerSec - safeKeysPerSec(baselineWpm));
   if (excess <= 0) return 0;
   return excess * WEAR_PER_EXCESS_KEY * dtSeconds;
 }
+
+/**
+ * The piano recovers a little while you are not hammering it. Without this
+ * the wear from a single bad afternoon would follow you forever, and the
+ * personal threshold would feel like a trap rather than a nudge. Slow
+ * enough that it never rescues active spamming.
+ */
+export const WEAR_RECOVERY_PER_SEC = 0.5;
 
 /**
  * Cost to fully repair the piano from `wear` (0–1000). Cheap early, steep

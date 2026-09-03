@@ -113,14 +113,37 @@ immediately. Banked inspiration adds up to +15% to the reception of the
 *next* piece that premieres, then resets to zero — an ambient bonus for
 stepping away, not a substitute for typing.
 
-**Piano wear.** Typing at any real human pace never wears the piano down —
-wear is driven by a *smoothed* rate (the engine's running average, not a
-single burst), so a quick flurry of ordinary typing, or a big backlog
-arriving all at once after the panel was hidden, never registers as
-spamming. Only holding a genuinely fast pace does, and the wear scale (0 to
-1000, not 0 to 100) means reaching a full jam takes a couple of minutes of
-sustained, genuine mashing — plenty of warning, and plenty of time to just
-stop. Past 30%/60%/85% wear the piano visibly cracks (60% also adds an
+**Your pace.** What counts as spamming is *personal*. A threshold fixed for
+everyone is either free money for a fast typist or a punishment for a slow
+one — and the original fixed threshold (15 keys/sec, which is 180 wpm) was
+so far above any human that mashing cost nothing at all. So the game
+measures you instead. A short typing test on first run gives a starting
+figure in words per minute (one "word" being five keystrokes, the usual
+convention); from then on the estimate follows how you actually type. It
+rises quickly (a 90-second time constant) and falls slowly (an hour), so it
+settles near your comfortable *peak* rather than your average — an average
+over a real session is dragged down by thinking and reading, and would end
+up accusing ordinary flurries of being spam. The estimate is held between 15
+and 140 wpm, and you can see it, and retake the test, in Settings.
+
+Two windows matter here, and they are deliberately different sizes. The
+*wear* threshold is about 1.7× your own pace. The *learning* window is
+wider — anything up to 12 keys/sec is still credible as typing and counts as
+evidence. Gating learning at the wear threshold instead would be a trap: an
+underestimating test could never be corrected, because the very typing that
+proved you were faster would be dismissed as spam. Mashing runs far above
+even the wider window, so it still teaches the game nothing.
+
+**Piano wear.** Wear is driven by a *smoothed* rate (the engine's running
+average, not a single burst), so a quick flurry of ordinary typing, or a big
+backlog arriving all at once after the panel was hidden, never registers as
+spamming. Only holding a pace well above *your own* does. The wear scale
+runs 0 to 1000 rather than 0 to 100 so the cracks creep in gradually: about
+ten seconds of real mashing is already visible, and a full jam takes a
+minute or two — enough warning to just stop. The piano also heals slowly
+(0.5 per second) whenever your pace is back under the threshold, so one bad
+afternoon does not follow you forever; it is far too slow to rescue active
+spamming. Past 30%/60%/85% wear the piano visibly cracks (60% also adds an
 occasional stuck-key stutter to the playing animation); past 100% it jams —
 keystrokes still count toward the lifetime total, but only a small fraction
 (12%) still turn into notes, with a spark and a flinch for the rest. That

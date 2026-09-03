@@ -4,7 +4,7 @@
  */
 import type { Bridge } from "./bridge";
 import type { GameStore } from "./store";
-import { applyKeys, type GameEvent } from "./game/state";
+import { applyKeys, observeTyping, type GameEvent } from "./game/state";
 import { tempoBpm } from "./game/economy";
 import type { Scene, Mood } from "./scene/scene";
 
@@ -93,8 +93,15 @@ export class Engine {
       this.rate += (instant - this.rate) * alpha;
       if (this.rate < 0.05) this.rate = 0;
 
+      // Learn the player's pace from how they actually type, and let the
+      // piano heal while they are not hammering it. Runs every tick, not
+      // just the ones with keystrokes, so recovery works while idle too.
+      if (state.onboarded) this.store.update((s) => observeTyping(s, this.rate, dt));
+
       if (delta > 0 && state.onboarded) {
-        const t = applyKeys(state, delta, Date.now(), Math.random, dt, this.rate);
+        // Re-read: observeTyping above has already moved the state on, and
+        // applyKeys replaces it wholesale.
+        const t = applyKeys(this.store.get(), delta, Date.now(), Math.random, dt, this.rate);
         this.store.update(() => t.state, { immediate: t.events.some((e) => e.type === "premiere") });
         const wasted = t.events.some((e) => e.type === "wasted");
         // A jammed piano still means you're at the keys, not away.

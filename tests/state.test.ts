@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FORMS, upgradeCost, WEAR_BROKEN_AT, repairCost } from "../src/game/economy";
+import { FORMS, upgradeCost, WEAR_BROKEN_AT, WEAR_STUTTER_AT, repairCost } from "../src/game/economy";
 import {
   abandonPiece,
   applyKeys,
@@ -184,18 +184,28 @@ describe("piano wear and repair", () => {
     // A quick 5-key burst over a short tick looks fast in that one instant,
     // but the smoothed rate the engine actually reports is well under the
     // safe threshold — the whole point of using a smoothed rate for wear.
+    s = { ...s, typing: { ...s.typing, baselineWpm: 72 } };
     s = applyKeys(s, 5, NOW, Math.random, 0.15, 6).state;
     expect(s.pianoWear).toBe(0);
   });
-  it("wears from a sustained fast rate and eventually jams, but only after a long stretch of it", () => {
+  it("wears quickly from sustained mashing, and jams inside a couple of minutes", () => {
     let s = startPiece(newGame(NOW), "bagatelle", NOW, 1).state;
-    // A steadily fast sustained rate, well above the safe threshold. The
-    // 0–1000 scale means a short burst of it is nowhere close to jamming —
-    // only genuinely sticking with it for a couple of minutes gets there.
+    // A steadily fast sustained rate, well above the player's threshold.
+    // Ten seconds of it is already visible as cracks — spamming is meant to
+    // be a bad idea you notice quickly, not a free ride.
     for (let i = 0; i < 10; i++) s = applyKeys(s, 25, NOW + i * 1000, Math.random, 1, 25).state;
-    expect(s.pianoWear).toBeLessThan(WEAR_BROKEN_AT * 0.2);
-    for (let i = 10; i < 200; i++) s = applyKeys(s, 25, NOW + i * 1000, Math.random, 1, 25).state;
+    expect(s.pianoWear).toBeGreaterThan(WEAR_BROKEN_AT * 0.2);
+    expect(s.pianoWear).toBeLessThan(WEAR_STUTTER_AT);
+    for (let i = 10; i < 120; i++) s = applyKeys(s, 25, NOW + i * 1000, Math.random, 1, 25).state;
     expect(s.pianoWear).toBe(WEAR_BROKEN_AT);
+  });
+  it("judges the same rate differently for a fast and a slow typist", () => {
+    const base = startPiece(newGame(NOW), "bagatelle", NOW, 1).state;
+    const slow = { ...base, typing: { ...base.typing, baselineWpm: 35 } };
+    const fast = { ...base, typing: { ...base.typing, baselineWpm: 120 } };
+    const rate = 9;
+    expect(applyKeys(slow, 9, NOW, Math.random, 1, rate).state.pianoWear).toBeGreaterThan(0);
+    expect(applyKeys(fast, 9, NOW, Math.random, 1, rate).state.pianoWear).toBe(0);
   });
   it("mostly wastes keystrokes once broken, but never all of them", () => {
     let s = { ...startPiece(newGame(NOW), "bagatelle", NOW, 1).state, pianoWear: WEAR_BROKEN_AT };

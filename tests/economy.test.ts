@@ -2,8 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   FORMS,
   UPGRADES,
-  SAFE_KEYS_PER_SEC,
+  safeKeysPerSec,
+  wpmToKeysPerSec,
+  keysPerSecToWpm,
+  DEFAULT_BASELINE_WPM,
+  MIN_SAFE_KEYS_PER_SEC,
+  MAX_SAFE_KEYS_PER_SEC,
   WEAR_BROKEN_AT,
+  WEAR_STUTTER_AT,
   artistryMultiplier,
   drawReception,
   formatMoney,
@@ -116,17 +122,58 @@ describe("formatting", () => {
   });
 });
 
+describe("typing pace", () => {
+  it("converts between wpm and keys per second at five keys a word", () => {
+    expect(wpmToKeysPerSec(60)).toBeCloseTo(5);
+    expect(keysPerSecToWpm(5)).toBeCloseTo(60);
+    expect(keysPerSecToWpm(wpmToKeysPerSec(83))).toBeCloseTo(83);
+  });
+  it("sets the spam threshold above the player's own pace", () => {
+    const own = wpmToKeysPerSec(60);
+    expect(safeKeysPerSec(60)).toBeGreaterThan(own);
+  });
+  it("gives a faster typist more headroom than a slower one", () => {
+    expect(safeKeysPerSec(90)).toBeGreaterThan(safeKeysPerSec(40));
+  });
+  it("clamps the threshold at both ends", () => {
+    expect(safeKeysPerSec(1)).toBe(MIN_SAFE_KEYS_PER_SEC);
+    expect(safeKeysPerSec(1000)).toBe(MAX_SAFE_KEYS_PER_SEC);
+  });
+  it("falls back to the default pace for nonsense input", () => {
+    expect(safeKeysPerSec(NaN)).toBe(safeKeysPerSec(DEFAULT_BASELINE_WPM));
+    expect(safeKeysPerSec(0)).toBe(safeKeysPerSec(DEFAULT_BASELINE_WPM));
+  });
+  it("is far stricter than the old fixed 15 keys/sec threshold", () => {
+    // The regression this feature fixes: 15 keys/sec is 180 wpm, so mashing
+    // used to cost nothing at all.
+    expect(safeKeysPerSec(DEFAULT_BASELINE_WPM)).toBeLessThan(15);
+  });
+});
+
 describe("piano wear", () => {
   it("adds no wear at or under a safe typing rate", () => {
-    expect(wearFromTyping(SAFE_KEYS_PER_SEC, 1)).toBe(0);
+    expect(wearFromTyping(safeKeysPerSec(DEFAULT_BASELINE_WPM), 1)).toBe(0);
     expect(wearFromTyping(3, 1)).toBe(0);
     expect(wearFromTyping(0, 1)).toBe(0);
   });
   it("wears faster the more the rate exceeds safe typing", () => {
-    const mild = wearFromTyping(SAFE_KEYS_PER_SEC + 2, 1);
-    const wild = wearFromTyping(SAFE_KEYS_PER_SEC + 20, 1);
+    const safe = safeKeysPerSec(DEFAULT_BASELINE_WPM);
+    const mild = wearFromTyping(safe + 2, 1);
+    const wild = wearFromTyping(safe + 20, 1);
     expect(mild).toBeGreaterThan(0);
     expect(wild).toBeGreaterThan(mild * 5);
+  });
+  it("judges the same rate against the player's own pace", () => {
+    // 10 keys/sec is a hammering for a 40 wpm typist and a good run for a
+    // 110 wpm one.
+    expect(wearFromTyping(10, 1, 40)).toBeGreaterThan(0);
+    expect(wearFromTyping(10, 1, 110)).toBe(0);
+  });
+  it("mashing shows cracks in well under a minute", () => {
+    // 20 keys/sec against a default pace: stutter, then a full jam.
+    const perSecond = wearFromTyping(20, 1, DEFAULT_BASELINE_WPM);
+    expect(WEAR_STUTTER_AT / perSecond).toBeLessThan(60);
+    expect(WEAR_BROKEN_AT / perSecond).toBeLessThan(120);
   });
   it("ignores a non-positive duration", () => {
     expect(wearFromTyping(50, 0)).toBe(0);

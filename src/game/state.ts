@@ -16,6 +16,11 @@ import {
   upgradeCost,
   upgradeDef,
   wearFromTyping,
+  safeKeysPerSec,
+  keysPerSecToWpm,
+  DEFAULT_BASELINE_WPM,
+  LEARN_MAX_KEYS_PER_SEC,
+  WEAR_RECOVERY_PER_SEC,
   type FormId,
   type UpgradeId,
   type Upgrades,
@@ -23,7 +28,7 @@ import {
 import { mulberry32, randomSeed } from "./rng";
 import { generateTitle, type KeyName, type Mode } from "./titles";
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export type Theme = "paper" | "night" | "auto";
 
@@ -95,6 +100,20 @@ export interface Stats {
   todayNotes: number;
 }
 
+/**
+ * What the game believes about how fast you type. `testWpm` is the first-run
+ * measurement (0 if you skipped it); `baselineWpm` is the living estimate
+ * that the threshold for spamming is built on.
+ */
+export interface Typing {
+  /** Words per minute from the first-run test; 0 if it was skipped. */
+  testWpm: number;
+  /** The adapting estimate of your comfortable pace, in words per minute. */
+  baselineWpm: number;
+  /** Seconds of genuine typing seen so far — how much to trust the baseline. */
+  observedSeconds: number;
+}
+
 export interface GameState {
   version: number;
   createdAt: number;
@@ -115,6 +134,7 @@ export interface GameState {
   stats: Stats;
   /** 0 (pristine) – 1000 (jammed); see economy.ts for the mechanics. */
   pianoWear: number;
+  typing: Typing;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -146,7 +166,79 @@ export function newGame(now = Date.now()): GameState {
     settings: { ...DEFAULT_SETTINGS },
     stats: { premieres: 0, bestEarning: 0, totalEarned: 0, spent: 0, today: dayKey(now), todayNotes: 0 },
     pianoWear: 0,
+    typing: { testWpm: 0, baselineWpm: DEFAULT_BASELINE_WPM, observedSeconds: 0 },
   };
+}
+
+/**
+ * Plausible bounds for a human at a keyboard. The test and the live
+ * baseline are both held inside these: below the floor is a mistake or a
+ * distraction, above the ceiling is not typing at all, and neither should
+ * be allowed to define what "normal" means for you.
+ */
+export const MIN_BASELINE_WPM = 15;
+export const MAX_BASELINE_WPM = 140;
+
+export function clampWpm(wpm: number): number {
+  if (!Number.isFinite(wpm)) return DEFAULT_BASELINE_WPM;
+  return Math.max(MIN_BASELINE_WPM, Math.min(MAX_BASELINE_WPM, wpm));
+}
+
+/** Records the result of the first-run (or retaken) typing test. */
+export function setTypingTest(state: GameState, wpm: number): GameState {
+  const measured = clampWpm(wpm);
+  return { ...state, typing: { testWpm: measured, baselineWpm: measured, observedSeconds: 0 } };
+}
+
+/**
+ * How quickly the baseline follows what it sees. It rises far faster than
+ * it falls, so the estimate settles near your *comfortable peak* rather
+ * than your average — an average over a real session is dragged down by
+ * thinking, reading and pausing, and would end up accusing ordinary
+ * flurries of being spam. Time constants are in seconds of observed typing.
+ */
+const BASELINE_RISE_TAU = 90;
+const BASELINE_FALL_TAU = 3600;
+
+/**
+ * Folds one tick's observed pace into the baseline. Only genuine typing
+ * counts: samples below `OBSERVE_MIN_KPS` are pauses rather than pace, and
+ * anything above `LEARN_MAX_KEYS_PER_SEC` is beyond human typing — letting
+ * that raise the baseline would mean mashing quietly teaching the game that
+ * mashing is normal.
+ *
+ * Note the learning window is wider than the wear threshold, on purpose: a
+ * pace above your current threshold still counts as evidence about how fast
+ * you type, so an underestimating test corrects itself instead of trapping
+ * you.
+ *
+ * Also lets the piano heal while you are not hammering it, so a bad
+ * afternoon does not follow you forever.
+ */
+const OBSERVE_MIN_KPS = 1;
+
+export function observeTyping(state: GameState, keysPerSec: number, dtSeconds: number): GameState {
+  if (dtSeconds <= 0) return state;
+  const safe = safeKeysPerSec(state.typing.baselineWpm);
+  let typing = state.typing;
+
+  if (keysPerSec >= OBSERVE_MIN_KPS && keysPerSec <= LEARN_MAX_KEYS_PER_SEC) {
+    const observed = clampWpm(keysPerSecToWpm(keysPerSec));
+    const tau = observed > typing.baselineWpm ? BASELINE_RISE_TAU : BASELINE_FALL_TAU;
+    const alpha = 1 - Math.exp(-dtSeconds / tau);
+    typing = {
+      ...typing,
+      baselineWpm: clampWpm(typing.baselineWpm + (observed - typing.baselineWpm) * alpha),
+      observedSeconds: typing.observedSeconds + dtSeconds,
+    };
+  }
+
+  // Recovery only while the pace is genuinely back under the threshold, so
+  // it can never offset active spamming.
+  const pianoWear = keysPerSec < safe ? Math.max(0, state.pianoWear - WEAR_RECOVERY_PER_SEC * dtSeconds) : state.pianoWear;
+
+  if (typing === state.typing && pianoWear === state.pianoWear) return state;
+  return { ...state, typing, pianoWear };
 }
 
 /** Local calendar day as YYYY-MM-DD. */
@@ -203,7 +295,7 @@ export function applyKeys(
   s = { ...s, keysConsumed: s.keysConsumed + keys };
 
   const wasBroken = s.pianoWear >= WEAR_BROKEN_AT;
-  s = { ...s, pianoWear: Math.min(WEAR_BROKEN_AT, s.pianoWear + wearFromTyping(typingRate, dtSeconds)) };
+  s = { ...s, pianoWear: Math.min(WEAR_BROKEN_AT, s.pianoWear + wearFromTyping(typingRate, dtSeconds, s.typing.baselineWpm)) };
 
   // Stubborn, not silent: even fully jammed, a small fraction of keystrokes
   // still land, so there is always a way to earn a way out — no state in
@@ -458,6 +550,7 @@ export function migrate(raw: unknown): GameState | null {
       todayNotes: num(s0.todayNotes, 0, 0),
     },
     pianoWear: Math.max(0, Math.min(WEAR_BROKEN_AT, num(raw.pianoWear, 0, 0))),
+    typing: migrateTyping(raw.typing),
   };
   if (state.current && state.current.notes > state.current.target) state.current.notes = state.current.target;
   state.spareNotes = Math.min(state.spareNotes, spareCap(state));
@@ -534,3 +627,13 @@ export function serialize(state: GameState): string {
 
 /** Deterministic RNG for tests and simulations. */
 export const seededRandom = mulberry32;
+
+function migrateTyping(v: unknown): Typing {
+  if (!isObj(v)) return { testWpm: 0, baselineWpm: DEFAULT_BASELINE_WPM, observedSeconds: 0 };
+  const test = num(v.testWpm, 0, 0);
+  return {
+    testWpm: test > 0 ? clampWpm(test) : 0,
+    baselineWpm: clampWpm(num(v.baselineWpm, DEFAULT_BASELINE_WPM, 0)),
+    observedSeconds: num(v.observedSeconds, 0, 0),
+  };
+}

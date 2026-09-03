@@ -4,7 +4,7 @@ import type { Bridge, Permission } from "./bridge";
 import { Engine } from "./engine";
 import { formatMoney } from "./game/economy";
 import { generateMelody, pentatonic, rootMidi } from "./game/melody";
-import { dismissNotice, newGame, repairPiano, setSettings, startPiece, type GameEvent, type GameState, type Theme, type Work } from "./game/state";
+import { dismissNotice, newGame, repairPiano, setSettings, setTypingTest, startPiece, type GameEvent, type GameState, type Theme, type Work } from "./game/state";
 import { Scene } from "./scene/scene";
 import { GameStore } from "./store";
 import { h, icon } from "./ui/dom";
@@ -440,10 +440,11 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
   if (store.loadFailed) toast.say("The last save could not be read.", "Starting from a fresh manuscript.");
 
   if (!store.get().onboarded) {
-    runOnboarding(app, card, (name) => {
+    runOnboarding(app, card, (name, wpm) => {
       void (async () => {
         await engine.resync();
-        const t = startPiece({ ...store.get(), composerName: name, onboarded: true }, "bagatelle");
+        const base = wpm > 0 ? setTypingTest(store.get(), wpm) : store.get();
+        const t = startPiece({ ...base, composerName: name, onboarded: true }, "bagatelle");
         store.replace(t.state);
         engine.wake();
         toast.say(`${name} has started a bagatelle.`, "Go and type something.");

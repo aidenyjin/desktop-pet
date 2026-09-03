@@ -21,6 +21,7 @@ import {
   dayKey,
   renamePiece,
   setSettings,
+  setTypingTest,
   startPiece,
   type GameState,
   type Settings,
@@ -30,6 +31,7 @@ import {
 import type { AppContext } from "../app";
 import { formatDate, h, icon } from "./dom";
 import type { ModalApi } from "./modal";
+import { TEST_PHRASE, typingTest } from "./typing-test";
 
 export function openPieces(app: AppContext): void {
   app.modals.open({
@@ -352,6 +354,29 @@ export function openSettings(app: AppContext): void {
   });
 }
 
+/** The typing test on its own, for retaking it from Settings. */
+export function openTypingTest(app: AppContext): void {
+  app.modals.open({
+    title: "Your pace",
+    body: (api) => {
+      const frag = document.createDocumentFragment();
+      for (const el of typingTest({
+        phrase: TEST_PHRASE,
+        title: "Type this line",
+        skipLabel: "Cancel",
+        onDone: (wpm) => {
+          app.store.update((st) => setTypingTest(st, wpm), { immediate: true });
+          api.close();
+        },
+        onSkip: () => api.close(),
+      })) {
+        frag.appendChild(el);
+      }
+      return frag;
+    },
+  });
+}
+
 function toggle(label: string, sub: string | null, value: boolean, onChange: (v: boolean) => void, disabled = false): Node {
   return h(
     "div",
@@ -410,6 +435,32 @@ function settingsBody(app: AppContext, api: ModalApi, extra: { autostart: boolea
       ),
     );
   }
+
+  // Your pace: what the anti-spam threshold is measured against.
+  const typing = s.typing;
+  const paceWpm = Math.round(typing.baselineWpm);
+  const learned = typing.observedSeconds >= 60;
+  frag.appendChild(
+    h(
+      "div",
+      { class: "setting" },
+      h(
+        "div",
+        { class: "setting-label" },
+        `Your pace — ${paceWpm} wpm`,
+        h(
+          "small",
+          null,
+          typing.testWpm > 0
+            ? learned
+              ? `Measured at ${Math.round(typing.testWpm)} wpm, refined as you type. Play much faster than this and the piano wears.`
+              : `Measured at ${Math.round(typing.testWpm)} wpm. It settles as the composer sees more of your typing.`
+            : "Estimated — take the test so the piano judges you by your own pace.",
+        ),
+      ),
+      h("div", { class: "setting-actions" }, h("button", { class: "btn is-small is-quiet", onClick: () => openTypingTest(app) }, typing.testWpm > 0 ? "Retake" : "Take test")),
+    ),
+  );
 
   frag.appendChild(
     h(

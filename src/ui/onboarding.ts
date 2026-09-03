@@ -1,16 +1,18 @@
-/** First run: a name, three sentences, and the permission question. */
+/** First run: a name, three sentences, a short typing test, and the permission question. */
 import { COMPOSER_NAMES } from "../game/titles";
+import { typingTest, TEST_PHRASE } from "./typing-test";
 import type { AppContext } from "../app";
 import { append, h } from "./dom";
 
-type Step = "welcome" | "name" | "how" | "permission";
+type Step = "welcome" | "name" | "how" | "pace" | "permission";
 
-export function runOnboarding(app: AppContext, parent: HTMLElement, onDone: (name: string) => void): void {
+export function runOnboarding(app: AppContext, parent: HTMLElement, onDone: (name: string, wpm: number) => void): void {
   const root = h("div", { class: "onboarding", role: "dialog", "aria-label": "Welcome" });
   parent.appendChild(root);
   let name: string = COMPOSER_NAMES[Math.floor(Math.random() * COMPOSER_NAMES.length)] ?? "Pip";
   const needsPermission = app.permission === "denied";
-  const steps: Step[] = needsPermission ? ["welcome", "name", "how", "permission"] : ["welcome", "name", "how"];
+  let wpm = 0;
+  const steps: Step[] = needsPermission ? ["welcome", "name", "how", "pace", "permission"] : ["welcome", "name", "how", "pace"];
   let index = 0;
 
   const dots = () => h("div", { class: "dots", "aria-hidden": "true" }, ...steps.map((_, i) => h("i", { class: i === index ? "on" : "" })));
@@ -87,6 +89,18 @@ export function runOnboarding(app: AppContext, parent: HTMLElement, onDone: (nam
         h("div", { class: "onboarding-actions" }, h("button", { class: "btn is-primary", onClick: next }, needsPermission ? "Continue" : "Begin")),
         dots(),
       );
+    } else if (step === "pace") {
+      root.append(
+        ...typingTest({
+          phrase: TEST_PHRASE,
+          onDone: (measured) => {
+            wpm = measured;
+            next();
+          },
+          onSkip: next,
+        }),
+        dots(),
+      );
     } else {
       let status: "idle" | "waiting" | "denied" = "idle";
       const body = h("div", { class: "onboarding-body" });
@@ -152,7 +166,7 @@ export function runOnboarding(app: AppContext, parent: HTMLElement, onDone: (nam
     if (finished) return;
     finished = true;
     root.remove();
-    onDone(name.trim() || "Pip");
+    onDone(name.trim() || "Pip", wpm);
   };
 
   render();
