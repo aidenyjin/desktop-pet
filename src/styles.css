@@ -36,10 +36,11 @@
   --margin-x: 18px;
   --margin-top: 8px;
   --margin-bottom: 34px;
-  /* Mini widget: a 140px window holds a 128px visible circle, 6px of
-     margin on each side for its drop shadow — the same pattern as the
-     full panel's margin around its shadow. */
-  --mini: 128px;
+  /* Mini widget: a rectangular window, 6px of margin on each side for its
+     drop shadow — the same pattern as the full panel's margin around its
+     shadow. */
+  --mini-w: 170px;
+  --mini-h: 132px;
   --mini-margin: 6px;
   color-scheme: light;
 }
@@ -152,8 +153,8 @@ body.in-browser .card {
 .card.is-mini {
   left: var(--mini-margin);
   top: var(--mini-margin);
-  width: var(--mini);
-  height: var(--mini);
+  width: var(--mini-w);
+  height: var(--mini-h);
   border-radius: 16px;
   cursor: grab;
 }
@@ -209,7 +210,7 @@ body.in-browser .card {
   /* .scene is bottom-anchored and taller than the mini card, which pushes
      its untransformed top edge up by (card height − scene height) = -72px;
      folded into --mini-ty so the translate still lands on the composer. */
-  transform: translate(var(--mini-tx, -163px), var(--mini-ty, -120px)) scale(var(--mini-zoom, 2.1));
+  transform: translate(var(--mini-tx, -120px), var(--mini-ty, -100px)) scale(var(--mini-zoom, 1.9));
 }
 /* A slim rectangular progress bar along the bottom edge of the mini widget. */
 .mini-bar {

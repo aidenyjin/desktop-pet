@@ -72,10 +72,11 @@ pub fn window<R: Runtime>(app: &AppHandle<R>) -> Option<WebviewWindow<R>> {
     app.get_webview_window(WINDOW_LABEL)
 }
 
-/// The mini widget's *window* is square; this is its side, in logical
-/// pixels. The visible circle is smaller (see styles.css --mini), leaving a
-/// margin for its drop shadow, the same way the full panel does.
-pub const MINI_LOGICAL: f64 = 140.0;
+/// The mini widget's *window* size, in logical pixels. The visible card is
+/// smaller (see styles.css --mini-w/--mini-h), leaving a margin for its drop
+/// shadow, the same way the full panel does.
+pub const MINI_LOGICAL_W: f64 = 182.0;
+pub const MINI_LOGICAL_H: f64 = 144.0;
 const FULL_LOGICAL_W: f64 = 396.0;
 const FULL_LOGICAL_H: f64 = 512.0;
 
@@ -146,9 +147,10 @@ fn default_mini_position<R: Runtime>(win: &WebviewWindow<R>) -> (f64, f64) {
         let scale = m.scale_factor();
         let area = m.work_area();
         let pad = 20.0 * scale;
-        let size = MINI_LOGICAL * scale;
-        let x = area.position.x as f64 + area.size.width as f64 - size - pad;
-        let y = area.position.y as f64 + area.size.height as f64 - size - pad;
+        let w = MINI_LOGICAL_W * scale;
+        let h = MINI_LOGICAL_H * scale;
+        let x = area.position.x as f64 + area.size.width as f64 - w - pad;
+        let y = area.position.y as f64 + area.size.height as f64 - h - pad;
         return (x, y);
     }
     (120.0, 120.0)
@@ -247,9 +249,9 @@ pub fn toggle<R: Runtime>(app: &AppHandle<R>, tray: Option<&Rect>) {
 pub fn enter_mini<R: Runtime>(app: &AppHandle<R>, at: Option<(f64, f64)>) {
     let Some(win) = window(app) else { return };
     app.state::<PanelState>().mini.store(true, Ordering::Relaxed);
-    let _ = win.set_size(tauri::LogicalSize::new(MINI_LOGICAL, MINI_LOGICAL));
+    let _ = win.set_size(tauri::LogicalSize::new(MINI_LOGICAL_W, MINI_LOGICAL_H));
     let (rx, ry) = at.unwrap_or_else(|| default_mini_position(&win));
-    let (x, y) = clamp_to_monitor(&win, rx, ry, MINI_LOGICAL, MINI_LOGICAL);
+    let (x, y) = clamp_to_monitor(&win, rx, ry, MINI_LOGICAL_W, MINI_LOGICAL_H);
     let _ = win.set_position(PhysicalPosition::new(x.round() as i32, y.round() as i32));
     #[cfg(target_os = "macos")]
     {
