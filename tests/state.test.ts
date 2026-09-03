@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { FORMS, upgradeCost, WEAR_BROKEN_AT, repairCost, INSPIRATION_CAP_SECONDS, INSPIRATION_MAX_BONUS } from "../src/game/economy";
+import { FORMS, upgradeCost, WEAR_BROKEN_AT, repairCost } from "../src/game/economy";
 import {
   abandonPiece,
   applyKeys,
   buyUpgrade,
   canRepair,
   canStart,
-  currentInspirationSeconds,
   dismissNotice,
   markInboxSeen,
   migrate,
@@ -17,8 +16,6 @@ import {
   serialize,
   setSettings,
   startPiece,
-  startThinking,
-  stopThinking,
   unseenCount,
 } from "../src/game/state";
 
@@ -245,46 +242,5 @@ describe("piano wear and repair", () => {
     const s = { ...newGame(NOW), pianoWear: 720 };
     const back = migrate(JSON.parse(serialize(s)))!;
     expect(back.pianoWear).toBe(720);
-  });
-});
-
-describe("thinking mode", () => {
-  it("banks elapsed time when stopped", () => {
-    let s = startThinking(newGame(NOW), NOW);
-    expect(s.thinkingSince).toBe(NOW);
-    s = stopThinking(s, NOW + 30_000);
-    expect(s.thinkingSince).toBeNull();
-    expect(s.pendingInspirationSec).toBe(30);
-  });
-  it("is a no-op to start twice or stop when not running", () => {
-    let s = startThinking(newGame(NOW), NOW);
-    expect(startThinking(s, NOW + 5000)).toBe(s);
-    s = stopThinking(s, NOW + 1000);
-    expect(stopThinking(s, NOW + 5000)).toBe(s);
-  });
-  it("caps banked time at the inspiration ceiling", () => {
-    let s = startThinking(newGame(NOW), NOW);
-    s = stopThinking(s, NOW + (INSPIRATION_CAP_SECONDS + 500) * 1000);
-    expect(s.pendingInspirationSec).toBe(INSPIRATION_CAP_SECONDS);
-  });
-  it("reports live-accruing seconds while running", () => {
-    const s = startThinking(newGame(NOW), NOW);
-    expect(currentInspirationSeconds(s, NOW + 10_000)).toBe(10);
-  });
-  it("typing interrupts thinking and banks what accrued", () => {
-    let s = startThinking(startPiece(newGame(NOW), "bagatelle", NOW, 1).state, NOW);
-    s = applyKeys(s, 5, NOW + 20_000, Math.random, 20).state;
-    expect(s.thinkingSince).toBeNull();
-    expect(s.pendingInspirationSec).toBe(20);
-  });
-  it("boosts the next premiere's payout and is spent by it", () => {
-    let s = startPiece(newGame(NOW), "bagatelle", NOW, 1).state;
-    s = { ...s, pendingInspirationSec: INSPIRATION_CAP_SECONDS };
-    const t = applyKeys(s, 500, NOW, seededRandom(3));
-    s = t.state;
-    const work = s.repertoire[0]!;
-    expect(work.inspirationBonus).toBeCloseTo(INSPIRATION_MAX_BONUS);
-    expect(work.reception).toBeGreaterThan(1.18); // base band ceiling, before the bonus
-    expect(s.pendingInspirationSec).toBe(0);
   });
 });

@@ -164,21 +164,8 @@ body.in-browser .card {
 .card.is-mini .piece,
 .card.is-mini .modal-layer,
 .card.is-mini .toast,
-.card.is-mini .think-toggle,
 .card.is-mini .pin-toggle {
   display: none;
-}
-
-/* Bottom-right corner of the scene — clear of the piano, composer and cat. */
-.icon-btn.think-toggle {
-  position: absolute;
-  right: 16px;
-  bottom: 16px;
-  z-index: 5;
-}
-.think-toggle[aria-pressed="true"] {
-  background: var(--ink);
-  color: var(--paper);
 }
 
 /* A small pin beside the menu button, top-right corner. */
@@ -425,31 +412,6 @@ body.in-browser .card {
 .piece-empty {
   margin-top: 6px;
   font-size: 14px;
-}
-.stopwatch {
-  margin-top: 4px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.stopwatch-icon {
-  display: inline-flex;
-  opacity: 0.7;
-}
-.stopwatch-icon svg {
-  width: 18px;
-  height: 18px;
-}
-.stopwatch-big {
-  font-weight: 700;
-  font-size: 28px;
-  font-variant-numeric: tabular-nums lining-nums;
-  flex: 1;
-}
-.stopwatch-stop {
-  min-height: 26px;
-  padding: 2px 12px;
-  font-size: 12.5px;
 }
 .piece-empty p {
   margin: 0 0 10px;

@@ -4,8 +4,6 @@ import {
   UPGRADES,
   SAFE_KEYS_PER_SEC,
   WEAR_BROKEN_AT,
-  INSPIRATION_CAP_SECONDS,
-  INSPIRATION_MAX_BONUS,
   artistryMultiplier,
   drawReception,
   formatMoney,
@@ -19,7 +17,6 @@ import {
   notesPerKey,
   wearFromTyping,
   repairCost,
-  inspirationBonus,
 } from "../src/game/economy";
 
 describe("forms", () => {
@@ -142,16 +139,5 @@ describe("piano wear", () => {
   });
   it("clamps repair cost to the broken ceiling", () => {
     expect(repairCost(WEAR_BROKEN_AT * 1.5)).toBe(repairCost(WEAR_BROKEN_AT));
-  });
-});
-
-describe("inspiration", () => {
-  it("is zero with no thinking and caps at the max bonus", () => {
-    expect(inspirationBonus(0)).toBe(0);
-    expect(inspirationBonus(INSPIRATION_CAP_SECONDS)).toBeCloseTo(INSPIRATION_MAX_BONUS);
-    expect(inspirationBonus(INSPIRATION_CAP_SECONDS * 10)).toBeCloseTo(INSPIRATION_MAX_BONUS);
-  });
-  it("grows linearly with banked seconds", () => {
-    expect(inspirationBonus(INSPIRATION_CAP_SECONDS / 2)).toBeCloseTo(INSPIRATION_MAX_BONUS / 2);
   });
 });

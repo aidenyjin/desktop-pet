@@ -1,6 +1,6 @@
 /** Money, the menu button, and what is on the stand. */
-import { WEAR_BROKEN_AT, formatMoney, formatNumber, inspirationBonus, repairCost } from "../game/economy";
-import { currentInspirationSeconds, progress, type GameState } from "../game/state";
+import { WEAR_BROKEN_AT, formatMoney, formatNumber, repairCost } from "../game/economy";
+import { progress, type GameState } from "../game/state";
 import { append, clear, h, icon } from "./dom";
 
 export interface HudActions {
@@ -9,7 +9,6 @@ export interface HudActions {
   onRename: () => void;
   onFixListening: () => void;
   onRepair: () => void;
-  onStopThinking: () => void;
 }
 
 export class Hud {
@@ -27,9 +26,6 @@ export class Hud {
 
   private readonly status: HTMLElement;
   private lastStatusKey = "";
-  private timerText: HTMLElement | null = null;
-  private timerInterval: number | undefined;
-  private lastState: GameState | null = null;
 
   constructor(parent: HTMLElement, private readonly actions: HudActions) {
     this.money = h("div", { class: "money", "aria-label": "Money" }, "$0");
@@ -55,7 +51,6 @@ export class Hud {
   }
 
   update(state: GameState, unseen: number): void {
-    this.lastState = state;
     const money = Math.floor(state.money);
     if (money !== this.lastMoney) {
       this.money.textContent = formatMoney(money);
@@ -69,46 +64,18 @@ export class Hud {
     this.badge.hidden = unseen === 0;
     this.badge.textContent = String(unseen);
 
-    // The status line (listening hint, piano wear, thinking) can change
-    // independently of the piece itself, so it's kept in its own container
-    // and refreshed every call rather than being tied to the piece-identity
-    // cache key below — otherwise a wear/thinking change with no piece
-    // progress to show for it would silently never reach the screen.
+    // The status line (listening hint, piano wear) can change independently
+    // of the piece itself, so it's kept in its own container and refreshed
+    // every call rather than being tied to the piece-identity cache key
+    // below — otherwise a wear change with no piece progress to show for it
+    // would silently never reach the screen.
     this.updateStatus(state);
 
-    const thinking = state.thinkingSince !== null;
     const cur = state.current;
-    const key = thinking ? "thinking" : cur ? `${cur.id}|${cur.title}|${Math.floor(cur.notes)}|${cur.target}` : `none|${Math.floor(state.spareNotes)}`;
-    if (key === this.lastPieceKey) {
-      if (thinking) this.refreshTimer(state);
-      return;
-    }
+    const key = cur ? `${cur.id}|${cur.title}|${Math.floor(cur.notes)}|${cur.target}` : `none|${Math.floor(state.spareNotes)}`;
+    if (key === this.lastPieceKey) return;
     const titleChanged = !cur || !this.lastPieceKey.startsWith(`${cur.id}|${cur.title}|`);
     this.lastPieceKey = key;
-
-    if (thinking) {
-      this.stopTimerInterval();
-      clear(this.piece);
-      const big = h("div", { class: "stopwatch-big" }, "0:00");
-      this.timerText = big;
-      append(this.piece, [
-        h(
-          "div",
-          { class: "stopwatch" },
-          h("span", { class: "stopwatch-icon" }, icon("think")),
-          big,
-          h("button", { class: "btn is-quiet stopwatch-stop", onClick: () => this.actions.onStopThinking() }, "Stop"),
-        ),
-        h("p", { class: "piece-hint" }, "Away from the piano, working it out."),
-        this.status,
-      ]);
-      this.refreshTimer(state);
-      this.timerInterval = window.setInterval(() => {
-        if (this.lastState) this.refreshTimer(this.lastState);
-      }, 500);
-      return;
-    }
-    this.stopTimerInterval();
 
     if (!cur) {
       clear(this.piece);
@@ -163,30 +130,12 @@ export class Hud {
     }
   }
 
-  private stopTimerInterval(): void {
-    if (this.timerInterval !== undefined) {
-      window.clearInterval(this.timerInterval);
-      this.timerInterval = undefined;
-    }
-    this.timerText = null;
-  }
-
-  private refreshTimer(state: GameState): void {
-    if (!this.timerText) return;
-    const secs = Math.floor(currentInspirationSeconds(state));
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    this.timerText.textContent = `${m}:${String(s).padStart(2, "0")}`;
-  }
-
   private updateStatus(state: GameState): void {
-    const key = [this.listening, this.supportsSystemWide, state.pianoWear, state.thinkingSince, state.thinkingSince && currentInspirationSeconds(state)].join(
-      "|",
-    );
+    const key = [this.listening, this.supportsSystemWide, state.pianoWear].join("|");
     if (key === this.lastStatusKey) return;
     this.lastStatusKey = key;
     clear(this.status);
-    append(this.status, [this.hint(), this.wearBanner(state), this.thinkingBanner(state)]);
+    append(this.status, [this.hint(), this.wearBanner(state)]);
   }
 
   private hint(): Node | null {
@@ -207,17 +156,6 @@ export class Hud {
       { class: `piece-hint ${broken ? "status-warn" : ""}` },
       broken ? "The piano is jammed — only a few keys still work. " : "The piano could use some care. ",
       h("button", { class: "link", onClick: () => this.actions.onRepair() }, `Repair — ${formatMoney(repairCost(state.pianoWear))}`),
-    );
-  }
-
-  private thinkingBanner(state: GameState): Node | null {
-    if (state.thinkingSince === null) return null;
-    const pct = Math.round(inspirationBonus(currentInspirationSeconds(state)) * 100);
-    return h(
-      "div",
-      { class: "piece-hint" },
-      pct > 0 ? `Thinking it through — +${pct}% for the next piece. ` : "Thinking it through… ",
-      h("button", { class: "link", onClick: () => this.actions.onStopThinking() }, "Stop"),
     );
   }
 }

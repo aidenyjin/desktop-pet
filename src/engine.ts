@@ -97,7 +97,7 @@ export class Engine {
         const t = applyKeys(state, delta, Date.now(), Math.random, dt, this.rate);
         this.store.update(() => t.state, { immediate: t.events.some((e) => e.type === "premiere") });
         const wasted = t.events.some((e) => e.type === "wasted");
-        // A jammed piano still means you're at the keys, not away thinking.
+        // A jammed piano still means you're at the keys, not away.
         if (!wasted) this.lastKeyAt = now / 1000;
         this.hooks.onKeys(delta);
         if (t.events.length) this.hooks.onEvents(t.events);
@@ -126,7 +126,6 @@ export class Engine {
     const state = this.store.get();
     let mood: Mood;
     if (nowS - this.premiereAt < PREMIERE_S) mood = "premiere";
-    else if (state.thinkingSince !== null) mood = "thinking";
     else if (nowS - this.lastKeyAt < IDLE_AFTER_S) mood = "playing";
     else if (nowS - this.lastKeyAt > DOZE_AFTER_S || this.lastKeyAt === -Infinity) mood = "dozing";
     else mood = "idle";

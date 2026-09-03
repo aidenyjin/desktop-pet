@@ -1,8 +1,8 @@
 /**
  * The mini widget: a small, draggable stand-in for the full panel. It reuses
  * the same animated scene (cropped and zoomed via CSS onto the piano and
- * composer) so whatever they're up to — playing, thinking, dozing,
- * celebrating — still reads at a glance, behind a plain rectangular frame
+ * composer) so whatever they're up to — playing, dozing, celebrating —
+ * still reads at a glance, behind a plain rectangular frame
  * with a slim progress bar along the bottom.
  */
 import { h } from "./dom";

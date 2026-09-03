@@ -11,7 +11,7 @@ export const SCENE_W = 180;
 export const SCENE_H = 100;
 const FLOOR_Y = 86;
 
-export type Mood = "idle" | "playing" | "dozing" | "premiere" | "thinking";
+export type Mood = "idle" | "playing" | "dozing" | "premiere";
 
 export interface SceneView {
   mood: Mood;
@@ -26,7 +26,7 @@ export interface SceneView {
 }
 
 interface Particle {
-  kind: "note" | "z" | "confetti" | "spark" | "sparkle" | "steam";
+  kind: "note" | "z" | "confetti" | "spark" | "sparkle";
   x: number;
   y: number;
   vx: number;
@@ -46,44 +46,18 @@ const BAYER: ReadonlyArray<ReadonlyArray<number>> = [
   [15, 7, 13, 5],
 ];
 
-/**
- * Thinking mode sends the composer out for coffee: a single "journey" value
- * (0 = at the piano, 1 = at the kitchen window) drives position, room and
- * door state together, so the walk out and the walk back are the same
- * piecewise function run in opposite directions — no separate code paths.
- *
- *   0 ───────── .15 ── .22 [hidden, home→kitchen at .30] .35 ── .42 ───────── 1
- *   piano     door opens   through the doorway            door   walking   window
- *                                                          shuts
- */
-const JOURNEY_SPEED = 1 / 1.8; // a one-way trip takes ~1.8s of walking time
-const DOOR_OPEN_AT = 0.15;
-const HIDDEN_FROM = 0.22;
-const ROOM_SWITCH_AT = 0.3;
-const HIDDEN_TO = 0.35;
-const DOOR_SHUT_AT = 0.42;
-/** Leg boundaries the journey eases between, in each direction. */
-const JOURNEY_STOPS = [0, HIDDEN_FROM, HIDDEN_TO, 1];
-const JOURNEY_STOPS_REV = [...JOURNEY_STOPS].reverse();
-
 const LAYOUT = {
   piano: { x: 6, y: 42 },
   candle: { x: 10, y: 30 },
   flame: { x: 11, y: 26 },
   metronome: { x: 24, y: 30 },
   composer: { x: 46, y: 46 },
-  homeDoor: { x: 160, y: 42 },
   rug: { x: 28, y: 83 },
   window: { x: 84, y: 24 },
   shelf: { x: 124, y: 30 },
   armchair: { x: 134, y: 60 },
   cat: { x: 146, y: 64 },
   clock: { x: 62, y: 24 },
-  kitchenDoor: { x: 6, y: 42 },
-  kitchenWindow: { x: 96, y: 24 },
-  counter: { x: 136, y: 74 },
-  composerAtKitchenDoor: 12,
-  composerAtWindow: 102,
   notesFrom: { x: 39, y: 54 },
   zFrom: { x: 62, y: 44 },
 };
@@ -113,12 +87,7 @@ export class Scene {
   private wakeUntil = 0;
   private joltUntil = 0;
   private prevMood: Mood = "idle";
-  /** 0 = at the piano, 1 = at the kitchen window; see the journey diagram above. */
-  private journey = 0;
-  private windowX = LAYOUT.window.x;
-  private windowY = LAYOUT.window.y;
   private zAt = 0;
-  private steamAt = 0;
   private rng = mulberry32(7);
   private scale = 1;
   private windowInterior: Array<[number, number, number]> = []; // row, x0, x1 (inclusive) in window-local coords
@@ -351,42 +320,6 @@ export class Scene {
     // Clouds.
     this.cloudX = (this.cloudX + elapsed * 0.6) % 60;
 
-    // Out for coffee while thinking, and back again once it stops — see the
-    // journey diagram by LAYOUT for what each stretch of 0..1 means. Eased
-    // within each leg (piano→door, hidden crossing, door→window) so every
-    // start and stop is a gentle ease rather than a constant robotic pace.
-    const journeyTarget = v.mood === "thinking" ? 1 : 0;
-    const jd = journeyTarget - this.journey;
-    if (Math.abs(jd) > 0.0008) {
-      const dir = Math.sign(jd);
-      const bounds = dir > 0 ? JOURNEY_STOPS : JOURNEY_STOPS_REV;
-      const segEnd = bounds.find((b) => (dir > 0 ? b > this.journey + 1e-6 : b < this.journey - 1e-6)) ?? journeyTarget;
-      const segStart = bounds
-        .slice()
-        .reverse()
-        .find((b) => (dir > 0 ? b <= this.journey + 1e-6 : b >= this.journey - 1e-6)) ?? (dir > 0 ? 0 : 1);
-      const span = Math.abs(segEnd - segStart) || 1;
-      const within = Math.max(0, Math.min(1, Math.abs(this.journey - segStart) / span));
-      const ease = 0.25 + 0.9 * Math.sin(within * Math.PI); // slow-fast-slow across each leg
-      const step = dir * Math.min(Math.abs(jd), JOURNEY_SPEED * ease * elapsed);
-      this.journey = Math.max(0, Math.min(1, this.journey + step));
-    }
-    // A little steam off the mug while settled at the window.
-    if (this.journey >= 1 && this.time > this.steamAt) {
-      this.steamAt = this.time + 0.9 + this.rng() * 0.5;
-      this.particles.push({
-        kind: "steam",
-        x: LAYOUT.composerAtWindow - 5,
-        y: LAYOUT.composer.y + 7,
-        vx: (this.rng() - 0.5) * 3,
-        vy: -6 - this.rng() * 3,
-        age: 0,
-        life: 1.6 + this.rng() * 0.5,
-        variant: 0,
-        seed: this.rng() * 6.28,
-      });
-    }
-
     // Particles.
     const keep: Particle[] = [];
     for (const p of this.particles) {
@@ -424,36 +357,23 @@ export class Scene {
 
   // ───────────────────────── drawing ─────────────────────────
 
-  /** Which room is on screen right now, per the journey value. */
-  private get inKitchen(): boolean {
-    return this.journey >= ROOM_SWITCH_AT;
-  }
-
   private draw(): void {
     this.needsDraw = false;
     const ctx = this.bctx;
     ctx.clearRect(0, 0, SCENE_W, SCENE_H);
 
-    if (this.inKitchen) {
-      this.drawWindow(LAYOUT.kitchenWindow.x, LAYOUT.kitchenWindow.y);
-      this.blit(S.COUNTER, LAYOUT.counter.x, LAYOUT.counter.y);
-      this.drawDoor(LAYOUT.kitchenDoor.x, LAYOUT.kitchenDoor.y);
-      this.drawComposer();
-    } else {
-      this.drawWindow(LAYOUT.window.x, LAYOUT.window.y);
-      this.blit(S.SHELF, LAYOUT.shelf.x, LAYOUT.shelf.y);
-      this.drawClock();
-      this.blit(S.RUG, LAYOUT.rug.x, LAYOUT.rug.y);
-      this.blit(S.PIANO, LAYOUT.piano.x, LAYOUT.piano.y);
-      this.drawPianoWear();
-      this.blit(S.CANDLE, LAYOUT.candle.x, LAYOUT.candle.y);
-      this.blit(S.FLAME[this.flameFrame] ?? S.FLAME[0]!, LAYOUT.flame.x, LAYOUT.flame.y);
-      this.drawMetronome();
-      this.blit(S.ARMCHAIR, LAYOUT.armchair.x, LAYOUT.armchair.y);
-      this.blit(this.time < this.tailUntil ? S.CAT[1]! : S.CAT[0]!, LAYOUT.cat.x, LAYOUT.cat.y);
-      this.drawDoor(LAYOUT.homeDoor.x, LAYOUT.homeDoor.y);
-      this.drawComposer();
-    }
+    this.drawWindow();
+    this.blit(S.SHELF, LAYOUT.shelf.x, LAYOUT.shelf.y);
+    this.drawClock();
+    this.blit(S.RUG, LAYOUT.rug.x, LAYOUT.rug.y);
+    this.blit(S.PIANO, LAYOUT.piano.x, LAYOUT.piano.y);
+    this.drawPianoWear();
+    this.blit(S.CANDLE, LAYOUT.candle.x, LAYOUT.candle.y);
+    this.blit(S.FLAME[this.flameFrame] ?? S.FLAME[0]!, LAYOUT.flame.x, LAYOUT.flame.y);
+    this.drawMetronome();
+    this.blit(S.ARMCHAIR, LAYOUT.armchair.x, LAYOUT.armchair.y);
+    this.blit(this.time < this.tailUntil ? S.CAT[1]! : S.CAT[0]!, LAYOUT.cat.x, LAYOUT.cat.y);
+    this.drawComposer();
     this.drawParticles();
 
     // Floor line.
@@ -468,57 +388,9 @@ export class Scene {
     out.drawImage(this.buf, 0, 0, SCENE_W * this.scale, SCENE_H * this.scale);
   }
 
-  /** The doorway to the other room; open while the composer is passing through it. */
-  private drawDoor(x: number, y: number): void {
-    const j = this.journey;
-    const open = this.inKitchen ? j < DOOR_SHUT_AT : j > DOOR_OPEN_AT;
-    this.blit(open ? S.DOOR_OPEN : S.DOOR_CLOSED, x, y);
-  }
-
   private drawComposer(): void {
     const v = this.view;
-    const j = this.journey;
-    const y = LAYOUT.composer.y;
-
-    // Hidden mid-doorway while the room swaps out from under them.
-    if (j > HIDDEN_FROM && j < HIDDEN_TO) return;
-
-    let x: number;
-    let atRest: "home" | "window" | null = null;
-    if (!this.inKitchen) {
-      // 0 (piano) .. DOOR_OPEN_AT's room's doorway at HIDDEN_FROM
-      const t = Math.min(1, j / HIDDEN_FROM);
-      x = Math.round(LAYOUT.composer.x + (LAYOUT.homeDoor.x - LAYOUT.composer.x) * t);
-      if (j <= 0.001) atRest = "home";
-    } else {
-      // HIDDEN_TO's kitchen doorway .. 1 (window)
-      const t = Math.max(0, Math.min(1, (j - HIDDEN_TO) / (1 - HIDDEN_TO)));
-      x = Math.round(LAYOUT.composerAtKitchenDoor + (LAYOUT.composerAtWindow - LAYOUT.composerAtKitchenDoor) * t);
-      if (j >= 0.999) atRest = "window";
-    }
-
-    if (atRest === "window") {
-      // Arrived: stands at the window with a mug, a slow breathing sway —
-      // no rush now that the room's been reached.
-      const sway = v.reduceMotion ? 0 : Math.round(Math.sin(this.time * 0.7) * 1);
-      this.blit(S.LEGS_STAND, x, y + 26);
-      this.blit(S.TORSO, x, y + 14 + sway);
-      this.blit(S.ARM_CHIN, x - 10, y + 12 + sway);
-      this.blit(S.HEAD_OPEN, x, y - 1 + sway);
-      this.blit(S.MUG, x - 7, y + 9 + sway);
-      return;
-    }
-    if (atRest !== "home") {
-      // Crossing a room: a plain stride with a light step-to-step bob.
-      const strideFrame = Math.floor(this.time / 0.16) % 2;
-      const bob = v.reduceMotion ? 0 : strideFrame === 0 ? 0 : -1;
-      this.blit(strideFrame ? S.LEGS_WALK_A : S.LEGS_WALK_B, x, y + 26);
-      this.blit(S.TORSO, x, y + 14 + bob);
-      this.blit(S.ARM_REST, x - 10, y + 12 + bob);
-      this.blit(S.HEAD_OPEN, x, y + bob);
-      return;
-    }
-
+    const { x, y } = LAYOUT.composer;
     const beat = Math.floor(this.beatIndex) % 2;
     let headDx = 0;
     let headDy = 0;
@@ -544,11 +416,6 @@ export class Scene {
       head = S.HEAD_OPEN;
       armsUp = true;
       headDy = -1;
-    } else if (v.mood === "thinking") {
-      head = S.HEAD_THINKING;
-      arm = S.ARM_CHIN;
-      const settle = Math.floor(this.time / 2.4) % 2;
-      torsoDy = v.reduceMotion ? 0 : settle;
     } else if (v.mood === "playing") {
       if (broken) {
         // Nothing is landing; a resigned, stuck-in-place attempt.
@@ -580,7 +447,7 @@ export class Scene {
       headDx -= 2;
       headDy += 1;
     }
-    if (this.time < this.blinkUntil && !premiere && !jolted && v.mood !== "dozing" && v.mood !== "thinking") head = S.HEAD_CLOSED;
+    if (this.time < this.blinkUntil && !premiere && !jolted && v.mood !== "dozing") head = S.HEAD_CLOSED;
 
     this.blit(S.STOOL, x, y + 26);
     this.blit(S.TORSO, x, y + 14 + torsoDy);
@@ -662,10 +529,9 @@ export class Scene {
     return !!row && lx >= row[0] && lx <= row[1];
   }
 
-  private drawWindow(x: number, y: number): void {
+  private drawWindow(): void {
     const ctx = this.bctx;
-    this.windowX = x;
-    this.windowY = y;
+    const { x, y } = LAYOUT.window;
     const sky = this.sky;
     ctx.fillStyle = this.view.ink;
 
@@ -737,8 +603,8 @@ export class Scene {
   /** Blits a sprite but only inside the window opening. `halo` erases dots behind it first. */
   private blitMasked(sp: S.Sprite, px: number, py: number, halo: boolean): void {
     const ctx = this.bctx;
-    const wx = this.windowX;
-    const wy = this.windowY;
+    const wx = LAYOUT.window.x;
+    const wy = LAYOUT.window.y;
     if (halo) {
       ctx.fillStyle = this.view.paper;
       for (let r = -1; r <= sp.h; r++) {
@@ -788,14 +654,6 @@ export class Scene {
         } else {
           ctx.fillRect(px, py, 1, 1);
         }
-      } else if (p.kind === "steam") {
-        // A soft wisp, faint from the start and fading further as it rises.
-        const alpha = (1 - p.age / p.life) * 0.5;
-        if (alpha <= 0.05) continue;
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = this.view.ink;
-        ctx.fillRect(px, py, 1, 1);
-        ctx.globalAlpha = 1;
       } else {
         const fadeOut = p.age > p.life - 1.2 && Math.floor(p.age * 10) % 2 === 0;
         if (fadeOut) continue;

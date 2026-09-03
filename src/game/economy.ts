@@ -224,19 +224,6 @@ export function repairCost(wear: number): number {
   return niceRound(300 * frac + 2700 * frac * frac);
 }
 
-// ───────────────────────── inspiration (thinking mode) ─────────────────────────
-
-/** Ten minutes of thinking banks the maximum bonus. */
-export const INSPIRATION_CAP_SECONDS = 600;
-/** The maximum boost thinking alone can give the next piece's reception. */
-export const INSPIRATION_MAX_BONUS = 0.15;
-
-/** Reception bonus for `seconds` of banked thinking (0 – INSPIRATION_MAX_BONUS). */
-export function inspirationBonus(seconds: number): number {
-  const s = Math.max(0, Math.min(INSPIRATION_CAP_SECONDS, seconds));
-  return (s / INSPIRATION_CAP_SECONDS) * INSPIRATION_MAX_BONUS;
-}
-
 export function formatMoney(n: number): string {
   return "$" + Math.floor(n).toLocaleString("en-US");
 }

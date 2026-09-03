@@ -4,7 +4,7 @@ import type { Bridge, Permission } from "./bridge";
 import { Engine } from "./engine";
 import { formatMoney } from "./game/economy";
 import { generateMelody, pentatonic, rootMidi } from "./game/melody";
-import { dismissNotice, progress, newGame, repairPiano, setSettings, startPiece, startThinking, stopThinking, type GameEvent, type GameState, type Theme, type Work } from "./game/state";
+import { dismissNotice, progress, newGame, repairPiano, setSettings, startPiece, type GameEvent, type GameState, type Theme, type Work } from "./game/state";
 import { Scene } from "./scene/scene";
 import { GameStore } from "./store";
 import { h, icon } from "./ui/dom";
@@ -70,7 +70,6 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
       store.update((s) => repairPiano(s), { immediate: true });
       if (store.get().pianoWear < before) scene.sparkle();
     },
-    onStopThinking: () => store.update((s) => stopThinking(s), { immediate: true }),
   });
   card.appendChild(sceneBox);
   const toast = new Toast(card, {
@@ -143,22 +142,6 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
     getWindowPosition: () => bridge.getWindowPosition(),
     onDragEnd: persistPanelPosition,
   });
-
-  // A quick toggle for thinking mode, tucked in the scene's empty bottom-right
-  // corner (clear of the piano and composer) — faster than opening the menu,
-  // and a visible cue whether it's on.
-  const thinkToggle = h(
-    "button",
-    {
-      class: "icon-btn think-toggle",
-      "aria-label": "Toggle thinking mode",
-      "aria-pressed": "false",
-      title: "Thinking mode",
-      onClick: () => store.update((s) => (s.thinkingSince !== null ? stopThinking(s) : startThinking(s)), { immediate: true }),
-    },
-    icon("think"),
-  );
-  card.appendChild(thinkToggle);
 
   // A small pin next to the menu button, top-right, to keep the panel open
   // (replaces the old "Keep open" menu entry with something quicker to
@@ -239,7 +222,6 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
     hud.update(s, store.unseen());
     mini.setProgress(progress(s));
     mini.setUnseen(store.unseen() > 0);
-    thinkToggle.setAttribute("aria-pressed", String(s.thinkingSince !== null));
     pinToggle.setAttribute("aria-pressed", String(s.settings.pinned));
     const badge = store.unseen() > 0;
     if (badge !== lastBadge) {
