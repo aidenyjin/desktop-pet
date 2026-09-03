@@ -41,7 +41,7 @@ export function formById(id: FormId): Form {
   return f;
 }
 
-export type UpgradeId = "tempo" | "artistry" | "ambition";
+export type UpgradeId = "tempo" | "artistry" | "ambition" | "cupboard";
 
 export interface UpgradeDef {
   id: UpgradeId;
@@ -66,7 +66,15 @@ export const UPGRADES: readonly UpgradeDef[] = [
   { id: "tempo", name: "Tempo", blurb: "More notes for every key you press.", max: TEMPI.length },
   { id: "artistry", name: "Artistry", blurb: "Finer work, warmer receptions, better pay.", max: 10 },
   { id: "ambition", name: "Ambition", blurb: "The nerve to take on larger forms.", max: FORMS.length },
+  { id: "cupboard", name: "Cupboard", blurb: "More room for sketches waiting to be used.", max: 8 },
 ];
+
+/** Sketches (spare notes) held with nothing on the stand; doubles per level. */
+export const CUPBOARD_BASE_CAP = 250;
+
+export function cupboardCap(level: number): number {
+  return CUPBOARD_BASE_CAP * Math.pow(2, Math.max(1, level) - 1);
+}
 
 export function upgradeDef(id: UpgradeId): UpgradeDef {
   return UPGRADES.find((u) => u.id === id)!;
@@ -105,6 +113,8 @@ export function upgradeCost(id: UpgradeId, level: number): number | null {
       const current = FORMS[level - 1];
       return current ? niceRound(current.payout * 1.5) : null;
     }
+    case "cupboard":
+      return niceRound(150 * Math.pow(2.2, level - 1));
   }
 }
 

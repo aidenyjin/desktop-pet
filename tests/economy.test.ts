@@ -35,7 +35,7 @@ describe("forms", () => {
     }
   });
   it("only the first form is unlocked at ambition 1", () => {
-    const up = { tempo: 1, artistry: 1, ambition: 1 };
+    const up = { tempo: 1, artistry: 1, ambition: 1, cupboard: 1 };
     expect(FORMS.filter((f) => formUnlocked(f, up)).map((f) => f.id)).toEqual(["bagatelle"]);
   });
 });
@@ -58,8 +58,8 @@ describe("upgrade costs", () => {
   it("tempo levels read as metronome markings and speed up", () => {
     expect(tempoName(1)).toBe("Adagio");
     expect(tempoName(99)).toBe("Prestissimo");
-    expect(notesPerKey({ tempo: 1, artistry: 1, ambition: 1 })).toBe(1);
-    expect(notesPerKey({ tempo: 5, artistry: 1, ambition: 1 })).toBe(2);
+    expect(notesPerKey({ tempo: 1, artistry: 1, ambition: 1, cupboard: 1 })).toBe(1);
+    expect(notesPerKey({ tempo: 5, artistry: 1, ambition: 1, cupboard: 1 })).toBe(2);
   });
   it("ambition to unlock étude costs less than a couple of bagatelles", () => {
     expect(upgradeCost("ambition", 1)).toBeLessThanOrEqual(FORMS[0]!.payout * 2);
@@ -74,8 +74,8 @@ describe("upgrade costs", () => {
 describe("payouts", () => {
   it("scale with artistry", () => {
     const form = FORMS[2]!;
-    const base = payoutFor(form, { tempo: 1, artistry: 1, ambition: 3 }, 1);
-    const better = payoutFor(form, { tempo: 1, artistry: 3, ambition: 3 }, 1);
+    const base = payoutFor(form, { tempo: 1, artistry: 1, ambition: 3, cupboard: 1 }, 1);
+    const better = payoutFor(form, { tempo: 1, artistry: 3, ambition: 3, cupboard: 1 }, 1);
     expect(base).toBe(form.payout);
     expect(better).toBe(Math.round(form.payout * artistryMultiplier(3)));
   });

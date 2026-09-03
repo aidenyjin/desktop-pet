@@ -3,6 +3,7 @@ import {
   FORMS,
   UPGRADES,
   artistryMultiplier,
+  cupboardCap,
   formById,
   formUnlocked,
   formatMoney,
@@ -156,6 +157,10 @@ function upgradeLine(s: GameState, id: UpgradeId): string {
       const next = FORMS[lvl];
       return next ? `Ambition: ${lvl}${arrow}${lvl + 1}` : `Ambition: ${lvl}`;
     }
+    case "cupboard":
+      return lvl >= max
+        ? `Cupboard: ${formatNumber(cupboardCap(lvl))} notes`
+        : `Cupboard: ${formatNumber(cupboardCap(lvl))}${arrow}${formatNumber(cupboardCap(lvl + 1))} notes`;
   }
 }
 
@@ -170,6 +175,8 @@ function upgradeDetail(s: GameState, id: UpgradeId): string {
       const next = FORMS[lvl];
       return next ? `Unlocks the ${next.name.toLowerCase()} (${formatNumber(next.notes)} notes).` : "Every form is within reach.";
     }
+    case "cupboard":
+      return "More sketches can wait in the drawer before the composer starts a piece.";
   }
 }
 

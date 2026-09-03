@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FORMS, upgradeCost, WEAR_BROKEN_AT, repairCost } from "../src/game/economy";
+import { CUPBOARD_BASE_CAP, FORMS, upgradeCost, WEAR_BROKEN_AT, repairCost } from "../src/game/economy";
 import {
   abandonPiece,
   applyKeys,
@@ -91,7 +91,7 @@ describe("typing", () => {
   it("bounds the drawer", () => {
     let s = newGame(NOW);
     s = applyKeys(s, 100_000, NOW).state; // nothing on the stand
-    expect(s.spareNotes).toBe(FORMS[0]!.notes);
+    expect(s.spareNotes).toBe(CUPBOARD_BASE_CAP);
     expect(s.keysConsumed).toBe(100_000);
   });
 });

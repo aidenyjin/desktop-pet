@@ -6,6 +6,7 @@ import {
   BROKEN_NOTE_EFFICIENCY,
   FORMS,
   WEAR_BROKEN_AT,
+  cupboardCap,
   drawReception,
   formById,
   formUnlocked,
@@ -139,7 +140,7 @@ export function newGame(now = Date.now()): GameState {
     keysConsumed: 0,
     lifetimeNotes: 0,
     spareNotes: 0,
-    upgrades: { tempo: 1, artistry: 1, ambition: 1 },
+    upgrades: { tempo: 1, artistry: 1, ambition: 1, cupboard: 1 },
     current: null,
     repertoire: [],
     inbox: [],
@@ -241,11 +242,9 @@ export function applyKeys(
   return { state: s, events };
 }
 
-/** Spare notes never exceed one piece of the largest unlocked form. */
+/** Spare notes (sketches in the cupboard) are capped, bigger with each cupboard upgrade. */
 export function spareCap(state: GameState): number {
-  const unlocked = FORMS.filter((f) => formUnlocked(f, state.upgrades));
-  const largest = unlocked[unlocked.length - 1] ?? FORMS[0]!;
-  return largest.notes;
+  return cupboardCap(state.upgrades.cupboard);
 }
 
 function premiere(state: GameState, now: number, rng: () => number): Transition {
@@ -419,6 +418,7 @@ export function migrate(raw: unknown): GameState | null {
     tempo: Math.min(upgradeDef("tempo").max, Math.floor(num(up.tempo, 1, 1))),
     artistry: Math.min(upgradeDef("artistry").max, Math.floor(num(up.artistry, 1, 1))),
     ambition: Math.min(upgradeDef("ambition").max, Math.floor(num(up.ambition, 1, 1))),
+    cupboard: Math.min(upgradeDef("cupboard").max, Math.floor(num(up.cupboard, 1, 1))),
   };
   const st = isObj(raw.settings) ? raw.settings : {};
   const miniPos = isObj(st.miniPosition) ? st.miniPosition : null;
