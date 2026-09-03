@@ -20,8 +20,10 @@ import {
   canStart,
   dayKey,
   renamePiece,
+  canRetakeTypingTest,
+  retakeCost,
+  retakeTypingTest,
   setSettings,
-  setTypingTest,
   startPiece,
   type GameState,
   type Settings,
@@ -354,18 +356,63 @@ export function openSettings(app: AppContext): void {
   });
 }
 
-/** The typing test on its own, for retaking it from Settings. */
+/**
+ * The typing test on its own, for redoing it later. Unlike the free one
+ * during setup this costs money, rising steeply with each retake — see
+ * `typingTestCost` for why. Nothing is charged until a run actually
+ * completes, so backing out is free.
+ */
 export function openTypingTest(app: AppContext): void {
+  let started = false;
   app.modals.open({
-    title: "Your pace",
+    title: "Redo typing test",
     body: (api) => {
+      const s = app.store.get();
+      const cost = retakeCost(s);
       const frag = document.createDocumentFragment();
+
+      if (!started) {
+        frag.appendChild(
+          h(
+            "div",
+            { class: "onboarding-body" },
+            h("h2", null, "Measure your pace again"),
+            h(
+              "p",
+              null,
+              `Your pace is currently ${Math.round(s.typing.baselineWpm)} wpm. Redoing the test replaces that figure and resets what the composer has learned from watching you type.`,
+            ),
+            h("p", { class: "small muted" }, `${formatMoney(cost)} — and each retake after this one costs more. You are only charged once you finish a run.`),
+          ),
+        );
+        frag.appendChild(
+          h(
+            "div",
+            { class: "onboarding-actions" },
+            h(
+              "button",
+              {
+                class: "btn is-primary",
+                disabled: !canRetakeTypingTest(s),
+                onClick: () => {
+                  started = true;
+                  api.refresh();
+                },
+              },
+              canRetakeTypingTest(s) ? `Take it — ${formatMoney(cost)}` : `Need ${formatMoney(cost)}`,
+            ),
+            h("button", { class: "btn is-quiet", onClick: () => api.close() }, "Not now"),
+          ),
+        );
+        return frag;
+      }
+
       for (const el of typingTest({
         phrase: TEST_PHRASE,
         title: "Type this line",
         skipLabel: "Cancel",
         onDone: (wpm) => {
-          app.store.update((st) => setTypingTest(st, wpm), { immediate: true });
+          app.store.update((st) => retakeTypingTest(st, wpm), { immediate: true });
           api.close();
         },
         onSkip: () => api.close(),
@@ -458,7 +505,11 @@ function settingsBody(app: AppContext, api: ModalApi, extra: { autostart: boolea
             : "Estimated — take the test so the piano judges you by your own pace.",
         ),
       ),
-      h("div", { class: "setting-actions" }, h("button", { class: "btn is-small is-quiet", onClick: () => openTypingTest(app) }, typing.testWpm > 0 ? "Retake" : "Take test")),
+      h(
+        "div",
+        { class: "setting-actions" },
+        h("button", { class: "btn is-small is-quiet", onClick: () => openTypingTest(app) }, `Redo — ${formatMoney(retakeCost(s))}`),
+      ),
     ),
   );
 

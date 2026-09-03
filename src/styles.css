@@ -1175,3 +1175,14 @@ body.in-browser .card {
   color: var(--accent);
   opacity: 1;
 }
+
+/* A menu entry that is shown but not yet available (a paid action you
+   cannot afford). Kept visible rather than hidden so the price is legible
+   as something to save up for. */
+.menu-item.is-disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.menu-item.is-disabled:hover {
+  background: transparent;
+}

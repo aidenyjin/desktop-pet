@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { newGame, observeTyping, setTypingTest, migrate, serialize, clampWpm, MIN_BASELINE_WPM, MAX_BASELINE_WPM } from "../src/game/state";
-import { DEFAULT_BASELINE_WPM, LEARN_MAX_KEYS_PER_SEC, safeKeysPerSec, wearFromTyping, wpmToKeysPerSec } from "../src/game/economy";
+import { newGame, observeTyping, setTypingTest, retakeTypingTest, canRetakeTypingTest, migrate, serialize, clampWpm, MIN_BASELINE_WPM, MAX_BASELINE_WPM } from "../src/game/state";
+import { DEFAULT_BASELINE_WPM, LEARN_MAX_KEYS_PER_SEC, safeKeysPerSec, typingTestCost, wearFromTyping, wpmToKeysPerSec } from "../src/game/economy";
 
 const NOW = 1_700_000_000_000;
 
@@ -26,6 +26,51 @@ describe("the typing test result", () => {
     const typed = type(newGame(NOW), 4, 60);
     expect(typed.typing.observedSeconds).toBeGreaterThan(0);
     expect(setTypingTest(typed, 80).typing.observedSeconds).toBe(0);
+  });
+});
+
+describe("paying to redo the test", () => {
+  const rich = (money: number) => ({ ...setTypingTest(newGame(NOW), 50), money });
+
+  it("is free the first time, during setup", () => {
+    const s = setTypingTest(newGame(NOW), 70);
+    expect(s.money).toBe(0);
+    expect(s.typing.retakes).toBe(0);
+  });
+  it("charges for a retake and records the new pace", () => {
+    const s = retakeTypingTest(rich(1000), 88);
+    expect(s.money).toBe(1000 - typingTestCost(0));
+    expect(s.typing.baselineWpm).toBe(88);
+    expect(s.typing.retakes).toBe(1);
+  });
+  it("counts the spend in the player's stats", () => {
+    const s = retakeTypingTest(rich(1000), 88);
+    expect(s.stats.spent).toBe(typingTestCost(0));
+  });
+  it("costs more every time, so re-rolling for a lucky score is a bad deal", () => {
+    let s = rich(100_000);
+    const paid: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      const before = s.money;
+      s = retakeTypingTest(s, 80);
+      paid.push(before - s.money);
+    }
+    expect(paid).toEqual([...paid].sort((a, b) => a - b));
+    expect(paid[3]!).toBeGreaterThan(paid[0]!);
+  });
+  it("refuses when it cannot be paid for, changing nothing", () => {
+    const poor = rich(10);
+    expect(canRetakeTypingTest(poor)).toBe(false);
+    expect(retakeTypingTest(poor, 120)).toBe(poor);
+  });
+  it("resets what was learned, so the new figure actually takes effect", () => {
+    const experienced = type(rich(1000), wpmToKeysPerSec(60), 200);
+    expect(experienced.typing.observedSeconds).toBeGreaterThan(0);
+    expect(retakeTypingTest(experienced, 35).typing.observedSeconds).toBe(0);
+  });
+  it("keeps the retake count across a save and load", () => {
+    const s = retakeTypingTest(rich(5000), 75);
+    expect(migrate(JSON.parse(serialize(s)))?.typing.retakes).toBe(1);
   });
 });
 

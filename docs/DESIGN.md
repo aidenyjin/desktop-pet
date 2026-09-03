@@ -131,7 +131,16 @@ rises quickly (a 90-second time constant) and falls slowly (an hour), so it
 settles near your comfortable *peak* rather than your average — an average
 over a real session is dragged down by thinking and reading, and would end
 up accusing ordinary flurries of being spam. The estimate is held between 15
-and 140 wpm, and you can see it, and retake the test, in Settings.
+and 140 wpm, and you can see it in Settings.
+
+Redoing the test is in the ≡ menu, and it costs money — $300 the first time,
+tripling with each retake up to a $25k cap. The escalation matters more than
+the price: a free unlimited retake would be an exploit, since you could roll
+the test repeatedly until a lucky run flattered you into a higher threshold,
+which is precisely the limit the test exists to set. Paying steeply makes one
+honest run the sensible move. The first measurement, during setup, is free,
+and nothing is charged until a run actually finishes, so backing out costs
+nothing.
 
 Two windows matter here, and they are deliberately different sizes. The
 *wear* threshold is about 1.7× your own pace. The *learning* window is

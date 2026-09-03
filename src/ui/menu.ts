@@ -7,6 +7,8 @@ export interface MenuItem {
   hint?: string;
   checked?: boolean;
   badge?: number;
+  /** Shown but unselectable — e.g. a paid action you cannot yet afford. */
+  disabled?: boolean;
 }
 
 export type MenuEntry = MenuItem | "separator";
@@ -43,10 +45,12 @@ export class Menu {
       const item = h(
         "button",
         {
-          class: "menu-item",
+          class: entry.disabled ? "menu-item is-disabled" : "menu-item",
           role: entry.checked === undefined ? "menuitem" : "menuitemcheckbox",
           "aria-checked": entry.checked === undefined ? undefined : String(entry.checked),
+          disabled: entry.disabled === true,
           onClick: () => {
+            if (entry.disabled) return;
             this.close();
             entry.onSelect();
           },

@@ -4,7 +4,7 @@ import type { Bridge, Permission } from "./bridge";
 import { Engine } from "./engine";
 import { formatMoney } from "./game/economy";
 import { generateMelody, pentatonic, rootMidi } from "./game/melody";
-import { dismissNotice, newGame, repairPiano, setSettings, setTypingTest, startPiece, type GameEvent, type GameState, type Theme, type Work } from "./game/state";
+import { canRetakeTypingTest, dismissNotice, newGame, repairPiano, retakeCost, setSettings, setTypingTest, startPiece, type GameEvent, type GameState, type Theme, type Work } from "./game/state";
 import { Scene } from "./scene/scene";
 import { GameStore } from "./store";
 import { h, icon } from "./ui/dom";
@@ -12,7 +12,7 @@ import { Hud } from "./ui/hud";
 import { Menu, type MenuEntry } from "./ui/menu";
 import { attachDrag, createMiniOverlay } from "./ui/mini";
 import { ModalHost } from "./ui/modal";
-import { openConfirm, openPieces, openRename, openRepertoire, openSettings, openUpgrades } from "./ui/modals";
+import { openConfirm, openPieces, openRename, openRepertoire, openSettings, openTypingTest, openUpgrades } from "./ui/modals";
 import { runOnboarding } from "./ui/onboarding";
 import { Toast } from "./ui/toast";
 
@@ -167,6 +167,12 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
       { label: "Upgrades", onSelect: () => openUpgrades(app) },
       { label: "Repertoire", onSelect: () => openRepertoire(app), badge: store.unseen() || undefined },
       { label: "Settings", onSelect: () => openSettings(app), hint: "⌘," },
+      {
+        label: "Redo typing test",
+        hint: formatMoney(retakeCost(s)),
+        disabled: !canRetakeTypingTest(s),
+        onSelect: () => openTypingTest(app),
+      },
       "separator",
       { label: "Shrink", checked: s.settings.mini, onSelect: () => (s.settings.mini ? exitMini() : enterMini()) },
       "separator",

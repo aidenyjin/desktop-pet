@@ -225,6 +225,26 @@ export const MIN_SAFE_KEYS_PER_SEC = 3.5;
 export const MAX_SAFE_KEYS_PER_SEC = 12;
 
 /**
+ * Retaking the typing test costs money, and each retake costs three times
+ * the last. The first measurement, during setup, is free.
+ *
+ * The escalation is the point rather than the price: a cheap unlimited
+ * retake would be an exploit, since you could roll the test over and over
+ * until a lucky run flattered you into a higher threshold — which is exactly
+ * the anti-spam limit the test exists to set. Paying steeply for each
+ * attempt makes an honest single run the sensible move. It is capped so it
+ * never becomes impossible in a long game.
+ */
+export const TYPING_TEST_BASE_COST = 300;
+export const TYPING_TEST_MAX_COST = 25_000;
+
+export function typingTestCost(retakes: number): number {
+  const n = Math.max(0, Math.floor(Number.isFinite(retakes) ? retakes : 0));
+  const raw = TYPING_TEST_BASE_COST * Math.pow(3, Math.min(n, 12));
+  return Math.min(TYPING_TEST_MAX_COST, niceRound(raw));
+}
+
+/**
  * The fastest pace still credible as real typing, and so the most the
  * baseline will ever learn from. This is deliberately *higher* than any
  * individual's spam threshold: gating learning at the threshold itself

@@ -20,6 +20,7 @@ import {
   keysPerSecToWpm,
   DEFAULT_BASELINE_WPM,
   LEARN_MAX_KEYS_PER_SEC,
+  typingTestCost,
   WEAR_RECOVERY_PER_SEC,
   type FormId,
   type UpgradeId,
@@ -112,6 +113,8 @@ export interface Typing {
   baselineWpm: number;
   /** Seconds of genuine typing seen so far — how much to trust the baseline. */
   observedSeconds: number;
+  /** How many times the test has been retaken; each one costs more. */
+  retakes: number;
 }
 
 export interface GameState {
@@ -166,7 +169,7 @@ export function newGame(now = Date.now()): GameState {
     settings: { ...DEFAULT_SETTINGS },
     stats: { premieres: 0, bestEarning: 0, totalEarned: 0, spent: 0, today: dayKey(now), todayNotes: 0 },
     pianoWear: 0,
-    typing: { testWpm: 0, baselineWpm: DEFAULT_BASELINE_WPM, observedSeconds: 0 },
+    typing: { testWpm: 0, baselineWpm: DEFAULT_BASELINE_WPM, observedSeconds: 0, retakes: 0 },
   };
 }
 
@@ -184,10 +187,36 @@ export function clampWpm(wpm: number): number {
   return Math.max(MIN_BASELINE_WPM, Math.min(MAX_BASELINE_WPM, wpm));
 }
 
-/** Records the result of the first-run (or retaken) typing test. */
+/** Records the result of the first-run typing test. Free; setup only. */
 export function setTypingTest(state: GameState, wpm: number): GameState {
   const measured = clampWpm(wpm);
-  return { ...state, typing: { testWpm: measured, baselineWpm: measured, observedSeconds: 0 } };
+  return { ...state, typing: { ...state.typing, testWpm: measured, baselineWpm: measured, observedSeconds: 0 } };
+}
+
+/** What the next retake costs. */
+export function retakeCost(state: GameState): number {
+  return typingTestCost(state.typing.retakes);
+}
+
+export function canRetakeTypingTest(state: GameState): boolean {
+  return state.money >= retakeCost(state);
+}
+
+/**
+ * Records a *paid* retake: charges for it, counts it (so the next one costs
+ * more), and adopts the new measurement. Refuses if it cannot be paid for,
+ * so the caller can offer it without having to re-check.
+ */
+export function retakeTypingTest(state: GameState, wpm: number): GameState {
+  const cost = retakeCost(state);
+  if (state.money < cost) return state;
+  const measured = clampWpm(wpm);
+  return {
+    ...state,
+    money: state.money - cost,
+    stats: { ...state.stats, spent: state.stats.spent + cost },
+    typing: { testWpm: measured, baselineWpm: measured, observedSeconds: 0, retakes: state.typing.retakes + 1 },
+  };
 }
 
 /**
@@ -629,11 +658,12 @@ export function serialize(state: GameState): string {
 export const seededRandom = mulberry32;
 
 function migrateTyping(v: unknown): Typing {
-  if (!isObj(v)) return { testWpm: 0, baselineWpm: DEFAULT_BASELINE_WPM, observedSeconds: 0 };
+  if (!isObj(v)) return { testWpm: 0, baselineWpm: DEFAULT_BASELINE_WPM, observedSeconds: 0, retakes: 0 };
   const test = num(v.testWpm, 0, 0);
   return {
     testWpm: test > 0 ? clampWpm(test) : 0,
     baselineWpm: clampWpm(num(v.baselineWpm, DEFAULT_BASELINE_WPM, 0)),
     observedSeconds: num(v.observedSeconds, 0, 0),
+    retakes: Math.floor(num(v.retakes, 0, 0)),
   };
 }
