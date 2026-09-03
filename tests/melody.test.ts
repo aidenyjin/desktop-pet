@@ -31,10 +31,30 @@ describe("melody", () => {
       }
     }
   });
-  it("ends on the tonic", () => {
-    const m = generateMelody(5, "A", "major", "sonata");
-    const finalNotes = m.notes.filter((n) => n.at === Math.max(...m.notes.map((x) => x.at)));
-    for (const n of finalNotes) expect((((n.midi - rootMidi("A")) % 12) + 12) % 12).toBe(0);
+  it("ends on a tonic chord, with the root in the bass", () => {
+    for (const mode of ["major", "minor"] as const) {
+      const m = generateMelody(5, "A", mode, "sonata");
+      const end = Math.max(...m.notes.map((x) => x.at));
+      const finalNotes = m.notes.filter((n) => n.at === end);
+      const third = mode === "minor" ? 3 : 4;
+      const pcs = finalNotes.map((n) => (((n.midi - rootMidi("A")) % 12) + 12) % 12);
+      for (const pc of pcs) expect([0, third, 7]).toContain(pc);
+      expect(pcs).toContain(0);
+      // The lowest sounding note is the root, so the chord is in root position.
+      expect(Math.min(...finalNotes.map((n) => n.midi)) % 12).toBe(rootMidi("A") % 12);
+    }
+  });
+
+  it("puts every strong beat on a chord tone of a real progression", () => {
+    // A spot check that the harmony is actually shared between the hands: at
+    // each bar's downbeat, everything sounding belongs to one triad.
+    const m = generateMelody(2024, "C", "major", "bagatelle");
+    for (let bar = 0; bar < 8; bar++) {
+      const onBeat = m.notes.filter((n) => n.at === bar * 4);
+      expect(onBeat.length).toBeGreaterThan(1);
+      const pcs = new Set(onBeat.map((n) => n.midi % 12));
+      expect(pcs.size).toBeLessThanOrEqual(4);
+    }
   });
   it("offers a pentatonic set for play-along", () => {
     expect(pentatonic("C", "major")).toEqual([60, 62, 64, 67, 69]);

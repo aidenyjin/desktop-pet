@@ -36,9 +36,10 @@ export class Audio {
     return this.ctx;
   }
 
-  private tone(midi: number, at: number, dur: number, vel: number): void {
+  private tone(midi: number, at: number, dur: number, vel: number, out?: GainNode): AudioNode[] {
     const ctx = this.ensure();
-    if (!ctx || !this.master) return;
+    const dest = out ?? this.master;
+    if (!ctx || !dest) return [];
     const freq = 440 * Math.pow(2, (midi - 69) / 12);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, at);
@@ -50,13 +51,14 @@ export class Audio {
     lp.frequency.setValueAtTime(Math.min(6000, freq * 5), at);
     lp.frequency.exponentialRampToValueAtTime(Math.max(300, freq * 1.5), at + dur);
     lp.connect(g);
-    g.connect(this.master);
+    g.connect(dest);
     const partials: Array<[number, number, OscillatorType]> = [
       [1, 1, "triangle"],
       [2, 0.28, "sine"],
       [3, 0.12, "sine"],
       [1.002, 0.35, "sine"],
     ];
+    const started: AudioNode[] = [];
     for (const [ratio, amp, type] of partials) {
       const o = ctx.createOscillator();
       o.type = type;
@@ -67,7 +69,9 @@ export class Audio {
       og.connect(lp);
       o.start(at);
       o.stop(at + dur + 0.3);
+      started.push(o);
     }
+    return started;
   }
 
   /** Plays a melody; returns false if audio is off or unavailable. */
@@ -75,17 +79,38 @@ export class Audio {
     const ctx = this.ensure();
     if (!ctx) return false;
     this.stop();
+    const bus = ctx.createGain();
+    bus.gain.value = 1;
+    bus.connect(this.master!);
     const start = ctx.currentTime + 0.05;
     const spb = 60 / melody.bpm;
-    for (const n of melody.notes) this.tone(n.midi, start + n.at * spb, n.dur * spb, n.vel);
+    const sources: AudioNode[] = [];
+    for (const n of melody.notes) sources.push(...this.tone(n.midi, start + n.at * spb, n.dur * spb, n.vel, bus));
     const total = (melody.length * spb + 0.6) * 1000;
-    const timer = window.setTimeout(() => {
+    const finish = (): void => {
       this.playing = null;
+      bus.disconnect();
       onEnd?.();
-    }, total);
+    };
+    const timer = window.setTimeout(finish, total);
     this.playing = {
       stop: () => {
         window.clearTimeout(timer);
+        // Fade this playback out over 80ms, then silence its oscillators, so
+        // stopping mid-phrase neither clicks nor leaves the piece ringing.
+        const t = ctx.currentTime;
+        bus.gain.cancelScheduledValues(t);
+        bus.gain.setValueAtTime(bus.gain.value, t);
+        bus.gain.linearRampToValueAtTime(0.0001, t + 0.08);
+        for (const s of sources) {
+          const osc = s as OscillatorNode;
+          try {
+            osc.stop(t + 0.1);
+          } catch {
+            // Already stopped; nothing to do.
+          }
+        }
+        window.setTimeout(() => bus.disconnect(), 300);
         onEnd?.();
       },
     };
@@ -101,14 +126,6 @@ export class Audio {
     const p = this.playing;
     this.playing = null;
     p.stop();
-    // Fade the master briefly so stopping mid-phrase does not click.
-    if (this.ctx && this.master) {
-      const t = this.ctx.currentTime;
-      this.master.gain.cancelScheduledValues(t);
-      this.master.gain.setValueAtTime(this.master.gain.value, t);
-      this.master.gain.linearRampToValueAtTime(0.0001, t + 0.08);
-      this.master.gain.setValueAtTime(0.5, t + 0.1);
-    }
   }
 
   /** A little rising figure when a piece premieres. */
