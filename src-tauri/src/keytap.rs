@@ -1,9 +1,11 @@
-//! System-wide keystroke *counting*.
+//! System-wide keystroke and mouse-click *counting*.
 //!
-//! On macOS this installs a listen-only `CGEventTap` for key-down events and
-//! increments an atomic counter. The event itself is never inspected beyond
-//! its auto-repeat flag and is never stored, logged, or forwarded. Nothing here
-//! can see *which* key was pressed in any place that outlives the callback.
+//! On macOS this installs a listen-only `CGEventTap` for key-down and
+//! mouse-down events and increments an atomic counter. The event itself is
+//! never inspected beyond its auto-repeat flag and is never stored, logged, or
+//! forwarded. Nothing here can see *which* key was pressed, or *where* a click
+//! landed, in any place that outlives the callback — the cursor position is
+//! never read at all.
 //!
 //! The counter is a lifetime total (persisted by `store::KeyLedger`) so the
 //! frontend can pull it at its own pace and never miss a keystroke, even if
@@ -120,6 +122,12 @@ mod imp {
                     CGEventTapOptions::ListenOnly,
                     vec![
                         CGEventType::KeyDown,
+                        // Clicks are notes too. Only the *down* edge counts, so
+                        // a single click is a single note, and a drag (down,
+                        // move, up) is not a flurry of them.
+                        CGEventType::LeftMouseDown,
+                        CGEventType::RightMouseDown,
+                        CGEventType::OtherMouseDown,
                         CGEventType::TapDisabledByTimeout,
                         CGEventType::TapDisabledByUserInput,
                     ],
@@ -133,6 +141,11 @@ mod imp {
                                 {
                                     cb_counter.total.fetch_add(1, Ordering::Relaxed);
                                 }
+                            }
+                            CGEventType::LeftMouseDown
+                            | CGEventType::RightMouseDown
+                            | CGEventType::OtherMouseDown => {
+                                cb_counter.total.fetch_add(1, Ordering::Relaxed);
                             }
                             CGEventType::TapDisabledByTimeout
                             | CGEventType::TapDisabledByUserInput => {

@@ -165,7 +165,7 @@ function upgradeDetail(s: GameState, id: UpgradeId): string {
   const lvl = s.upgrades[id];
   switch (id) {
     case "tempo":
-      return "More notes for every key you press.";
+      return "More notes for every key and click.";
     case "artistry":
       return `Pays ${Math.round(artistryMultiplier(lvl) * 100)}% now; warmer receptions.`;
     case "ambition": {
@@ -411,12 +411,12 @@ function settingsBody(app: AppContext, api: ModalApi, extra: { autostart: boolea
         h(
           "div",
           { class: "setting-label" },
-          h("span", { class: listening ? "status-ok" : "status-warn" }, listening ? "Counting keystrokes everywhere" : "Only counting keys typed here"),
+          h("span", { class: listening ? "status-ok" : "status-warn" }, listening ? "Counting keys and clicks everywhere" : "Only counting keys and clicks here"),
           h(
             "small",
             null,
             listening
-              ? "Only the count is kept — never which keys."
+              ? "Only the count is kept — never which keys, never where you click."
               : app.permission === "denied"
                 ? "Already switched on in System Settings? macOS sometimes only notices after a full quit and reopen."
                 : "Allow Input Monitoring so the composer hears you work.",
@@ -549,7 +549,7 @@ function settingsBody(app: AppContext, api: ModalApi, extra: { autostart: boolea
       " · ",
       h("button", { class: "link", onClick: () => void app.bridge.openUrl("https://github.com/aidenyjin/desktop-pet") }, "GitHub"),
       h("br"),
-      "Counts keystrokes, never records them. No network.",
+      "Counts keys and clicks, never records them. No network.",
       extra.saveDir ? h("span", null, h("br"), h("span", { title: extra.saveDir }, "Saved in Application Support.")) : null,
     ),
   );

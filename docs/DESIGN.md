@@ -5,7 +5,7 @@
 Sonatina takes its cue from idle desktop companions such as *Little Writer*:
 a one‑bit character on sage paper, serif type, and a single loop — **your
 keystrokes move their work forward**. The creative liberty taken here is the
-profession. Your companion is a composer. Every key you press is a note on
+profession. Your companion is a composer. Every key you press, and every click, is a note on
 their manuscript; finish a piece and it premieres, earning a little money and
 a little renown. Spend the money on their craft and they take on bigger
 forms — from a bagatelle to an opera.
@@ -66,6 +66,13 @@ the next piece (never enough to finish it outright).
 | Tempo     | notes per keystroke = bpm / 60; Adagio (60) → Prestissimo (200) in 8 marks | 100, 250, 600, 1.5k, 4k, 10k, 25k |
 | Artistry  | payout × (1 + 0.15·(L‑1)), warmer receptions | 200 · 2.5^(L‑1), rounded          |
 | Ambition  | unlocks form L+1                            | 1.5 × payout of the current largest  |
+
+Clicks count as notes alongside keystrokes: the composer is keeping you
+company through a day's work, and a day's work is not all typing — reading,
+browsing and clicking through an interface should move the manuscript along
+too. Only the *down* edge of a click counts, so a click is one note and a
+drag is not a flurry of them. The same wear threshold applies, so an
+auto-clicker is spam for exactly the same reason a held-down key is.
 
 A day of ordinary computer use is roughly 10–20k keystrokes. With 15k a day
 the simulation (`npm run simulate`) reaches a sonata on day 2, a concerto on
@@ -184,7 +191,7 @@ src/                     TypeScript, no framework
   audio.ts               WebAudio synth
 src-tauri/               Rust
   src/lib.rs             setup, commands, tray
-  src/keytap.rs          CGEventTap keystroke counter (macOS)
+  src/keytap.rs          CGEventTap key + click counter (macOS)
   src/panel.rs           window positioning / show / hide
   src/store.rs           atomic JSON persistence
 ```

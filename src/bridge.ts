@@ -140,6 +140,12 @@ function browserBridge(): Bridge {
     total += 1;
     persistKeys();
   });
+  // Clicks count too, matching the system-wide tap in the real app. Only the
+  // down edge, so a drag is one note rather than a flurry.
+  window.addEventListener("mousedown", () => {
+    total += 1;
+    persistKeys();
+  });
   const hooks: DevHooks = {
     addKeys(n) {
       total += n;

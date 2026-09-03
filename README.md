@@ -10,7 +10,7 @@
   <img src="docs/screenshots/hero.png" width="100%" alt="Sonatina: the panel while typing, a premiere, and the night theme" />
 </p>
 
-Your companion is an ambitious composer with very little discipline. **Every key you press, in any app, is a note on their manuscript.** Finish a piece and it premieres, earning a little money and a little renown. Spend it on their tempo, artistry and ambition, and they'll take on bigger forms — from a bagatelle to an opera — while you get on with your day.
+Your companion is an ambitious composer with very little discipline. **Every key you press and every click you make, in any app, is a note on their manuscript.** Finish a piece and it premieres, earning a little money and a little renown. Spend it on their tempo, artistry and ambition, and they'll take on bigger forms — from a bagatelle to an opera — while you get on with your day.
 
 It lives in the menu bar. Click the icon to see how they're doing; click anywhere else and the panel tucks itself away.
 
@@ -30,7 +30,7 @@ That builds the app for your Mac and copies it to `/Applications`. Apps built lo
 
 ### The one permission
 
-To hear you type in other apps, macOS asks to let Sonatina *receive keystrokes* (System Settings → Privacy & Security → **Input Monitoring**). Sonatina increments a counter and discards the event; **which keys you press is never recorded, stored or sent anywhere**. There is no network code in the app. If you'd rather not grant it, only typing inside the panel counts and the composer mostly naps.
+To hear you work in other apps, macOS asks to let Sonatina *receive keystrokes* (System Settings → Privacy & Security → **Input Monitoring**). Sonatina increments a counter and discards the event; **which keys you press, and where you click, is never recorded, stored or sent anywhere** — the cursor position is never even read. There is no network code in the app. If you'd rather not grant it, only typing and clicking inside the panel counts and the composer mostly naps.
 
 > Because the app is ad‑hoc signed, macOS ties the permission to the exact build. After updating, you may need to switch it on again.
 
@@ -39,7 +39,7 @@ To hear you type in other apps, macOS asks to let Sonatina *receive keystrokes* 
 | | |
 |---|---|
 | **Pieces** | Bagatelle · Étude · Nocturne · Sonata · Concerto · Symphony · Opera. Each needs a number of notes and pays when it premieres. Titles are generated (*Nocturne for the Hour Before Rain, Op. 6*), and you can rename them. |
-| **Tempo** | Adagio → Prestissimo. More notes for every key you press. |
+| **Tempo** | Adagio → Prestissimo. More notes for every key and click. |
 | **Artistry** | Better pay and warmer receptions on opening night. |
 | **Ambition** | Unlocks the next, larger form. |
 | **Renown** | Each premiere adds renown; the composer climbs from *Unknown* to *Legendary*. |
@@ -59,7 +59,7 @@ Paper or night appearance (or follow the system), launch at login, keep the pane
 
 ## Privacy and data
 
-* Keystrokes are **counted, not recorded**. The counter lives in `~/Library/Application Support/com.aidenyjin.sonatina/keys.json`.
+* Keystrokes and clicks are **counted, not recorded**. The counter lives in `~/Library/Application Support/com.aidenyjin.sonatina/keys.json`.
 * Game state is in `save.json` next to it, written atomically with a rolling `.bak`.
 * No analytics, no network requests, no third‑party services.
 
@@ -74,7 +74,7 @@ npm run simulate     # pacing simulation
 npm run shots        # screenshots of the panel and the scene
 ```
 
-The Rust side is small — tray, panel, keystroke counting, persistence — and everything about the game is TypeScript with no framework. `docs/DESIGN.md` explains the ideas and the numbers. `scripts/check-macos-from-linux.sh` type‑checks the Rust code for macOS from a Linux machine.
+The Rust side is small — tray, panel, keystroke and click counting, persistence — and everything about the game is TypeScript with no framework. `docs/DESIGN.md` explains the ideas and the numbers. `scripts/check-macos-from-linux.sh` type‑checks the Rust code for macOS from a Linux machine.
 
 ## Credits
 

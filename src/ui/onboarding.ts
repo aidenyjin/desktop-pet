@@ -28,7 +28,7 @@ export function runOnboarding(app: AppContext, parent: HTMLElement, onDone: (nam
           h("h1", null, "Sonatina"),
           h("p", { class: "lede" }, "A little composer for your menu bar."),
           composerArt(),
-          h("p", null, "They have ambition and very little discipline. Every key you press is a note on their manuscript."),
+          h("p", null, "They have ambition and very little discipline. Every key you press — and every click — is a note on their manuscript."),
         ),
         h("div", { class: "onboarding-actions" }, h("button", { class: "btn is-primary", onClick: next }, "Meet them")),
         dots(),
@@ -79,7 +79,7 @@ export function runOnboarding(app: AppContext, parent: HTMLElement, onDone: (nam
             h(
               "ol",
               null,
-              h("li", null, "Every key you press, anywhere, is a note."),
+              h("li", null, "Every key you press and every click you make, anywhere, is a note."),
               h("li", null, "When a piece is finished it premieres and earns a little money."),
               h("li", null, "Spend it on tempo, artistry and ambition, and take on bigger forms."),
             ),
@@ -108,7 +108,7 @@ export function runOnboarding(app: AppContext, parent: HTMLElement, onDone: (nam
       const paint = () => {
         body.replaceChildren(
           h("h2", null, "One question from macOS"),
-          h("p", null, `To hear you type in other apps, macOS will ask to let Sonatina “receive keystrokes”. It only counts them — which keys you press is never recorded, stored or sent anywhere.`),
+          h("p", null, `To hear you work in other apps, macOS will ask to let Sonatina “receive keystrokes”. It only counts them — which keys you press, and where you click, is never recorded, stored or sent anywhere.`),
           status === "denied"
             ? h(
                 "p",
