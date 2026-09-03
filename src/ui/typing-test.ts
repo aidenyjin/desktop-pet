@@ -49,8 +49,13 @@ export function typingTest(opts: TypingTestOptions): HTMLElement[] {
   paintTarget("");
 
   const hint = h("p", { class: "small muted" }, "Type it as you normally would. Accuracy counts.");
+
+  // The input is present but invisible: the phrase itself is the typing
+  // surface. A visible field would scroll horizontally once the text outgrew
+  // it, and the browser would scroll the panel to chase its caret — which is
+  // how the phrase used to end up off-screen, leaving nothing to copy from.
   const input = h("input", {
-    class: "text-input typing-input",
+    class: "typing-capture",
     type: "text",
     "aria-label": "Type the phrase",
     spellcheck: "false",
@@ -58,6 +63,14 @@ export function typingTest(opts: TypingTestOptions): HTMLElement[] {
     autocomplete: "off",
     autocorrect: "off",
   }) as HTMLInputElement;
+
+  const surface = h("div", { class: "typing-surface", onMousedown: (e: Event) => {
+    e.preventDefault();
+    input.focus();
+  } }, target, input);
+  const setFocused = (on: boolean) => surface.classList.toggle("is-focused", on);
+  input.addEventListener("focus", () => setFocused(true));
+  input.addEventListener("blur", () => setFocused(false));
 
   /** Correct characters typed so far, counted in place (not longest prefix). */
   const correctCount = (typed: string): number => {
@@ -89,6 +102,9 @@ export function typingTest(opts: TypingTestOptions): HTMLElement[] {
     hint.classList.remove("is-warn");
     if (input.value.length > phrase.length) input.value = input.value.slice(0, phrase.length);
     paintTarget(input.value);
+    // Keep the character you are about to type in view, so a phrase taller
+    // than its box scrolls with you instead of running off the bottom.
+    target.querySelector(".is-cursor")?.scrollIntoView({ block: "nearest" });
     if (input.value.length >= phrase.length) settle();
   });
   input.addEventListener("keydown", (e) => {
@@ -107,8 +123,7 @@ export function typingTest(opts: TypingTestOptions): HTMLElement[] {
         null,
         `Copy out the line below. It sets how hard the piano can be played before it starts to wear — measured against your pace, not a number picked for everyone.`,
       ),
-      target,
-      input,
+      surface,
       hint,
     ),
     h(

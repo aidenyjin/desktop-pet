@@ -1136,18 +1136,65 @@ body.in-browser .card {
 }
 
 /* ───────── typing test ───────── */
-/* The phrase to copy out, with each character marked right or wrong as you
-   go. Monospaced so the line does not reflow under the cursor while typing. */
+/* The phrase is the typing surface: each character is marked right or wrong
+   as you go, and the real input sits invisibly on top. A visible field would
+   scroll sideways once the text outgrew it, and the browser would scroll the
+   panel to chase its caret — which used to push the phrase out of sight and
+   leave nothing to copy from. */
+.typing-surface {
+  position: relative;
+  margin: 10px auto 12px;
+  max-width: 290px;
+  max-height: 108px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 10px;
+  border: 1.5px solid rgba(var(--ink-rgb), 0.25);
+  border-radius: 8px;
+  background: rgba(var(--ink-rgb), 0.04);
+  cursor: text;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--ink-rgb), 0.5) transparent;
+}
+.typing-surface::-webkit-scrollbar {
+  width: 5px;
+}
+.typing-surface::-webkit-scrollbar-thumb {
+  background: rgba(var(--ink-rgb), 0.45);
+  border-radius: 3px;
+}
+.typing-surface.is-focused {
+  border-color: rgba(var(--ink-rgb), 0.6);
+  background: rgba(var(--ink-rgb), 0.07);
+}
+/* Present for real keyboard input, but never seen: it must stay in the
+   layout (and not be display:none) or it could not hold focus. */
+.typing-capture {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  color: transparent;
+  caret-color: transparent;
+  outline: none;
+  resize: none;
+}
 .typing-phrase {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-  font-size: 12px;
-  line-height: 1.7;
+  font-size: 12.5px;
+  line-height: 1.75;
   text-align: left;
-  margin: 10px auto 12px;
-  max-width: 280px;
   white-space: pre-wrap;
-  opacity: 0.55;
+  word-break: break-word;
+  opacity: 0.5;
   user-select: none;
+  pointer-events: none;
 }
 .typing-phrase .is-right {
   opacity: 1;
@@ -1157,19 +1204,26 @@ body.in-browser .card {
 .typing-phrase .is-wrong {
   opacity: 1;
   color: var(--accent);
-  text-decoration: underline wavy;
+  background: rgba(var(--ink-rgb), 0.08);
+  border-radius: 2px;
 }
+/* The character you are about to type. */
 .typing-phrase .is-cursor {
   box-shadow: inset 2px 0 0 var(--accent);
   border-radius: 1px;
 }
-.typing-input {
-  display: block;
-  width: 100%;
-  max-width: 280px;
-  margin: 0 auto;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-  font-size: 12px;
+.typing-surface.is-focused .typing-phrase .is-cursor {
+  animation: caret 1s steps(1, end) infinite;
+}
+@keyframes caret {
+  50% {
+    box-shadow: inset 2px 0 0 transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .typing-surface.is-focused .typing-phrase .is-cursor {
+    animation: none;
+  }
 }
 .small.is-warn {
   color: var(--accent);
