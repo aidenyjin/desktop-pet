@@ -4,6 +4,7 @@
  */
 import * as S from "./sprites";
 import { skyAt, type SkyState } from "./sky";
+import { seasonAt, type Season } from "./season";
 import { mulberry32 } from "../game/rng";
 import { WEAR_BROKEN_AT, WEAR_STUTTER_AT } from "../game/economy";
 
@@ -125,6 +126,9 @@ export class Scene {
   private interiorByRow: Array<[number, number] | undefined> = [];
   private cloudX = 0;
   private stars: Array<[number, number, number]> = [];
+  /** Ambient bits (petals, leaves, snow, fireflies) drifting outside the window: [x0, y0, phase]. */
+  private seasonBits: Array<[number, number, number]> = [];
+  private season: Season = seasonAt(new Date());
   private needsDraw = true;
   private sky: SkyState = skyAt(new Date());
   private clock: () => Date = () => new Date();
@@ -142,6 +146,10 @@ export class Scene {
     for (let i = 0; i < 14; i++) {
       this.stars.push([2 + Math.floor(srng() * 25), 2 + Math.floor(srng() * 22), Math.floor(srng() * 1000)]);
     }
+    const brng = mulberry32(23);
+    for (let i = 0; i < 9; i++) {
+      this.seasonBits.push([2 + Math.floor(brng() * 25), Math.floor(brng() * 30), Math.floor(brng() * 1000)]);
+    }
     this.resize();
   }
 
@@ -149,6 +157,7 @@ export class Scene {
   setClock(fn: () => Date): void {
     this.clock = fn;
     this.sky = skyAt(fn());
+    this.season = seasonAt(fn());
     this.needsDraw = true;
   }
 
@@ -298,6 +307,7 @@ export class Scene {
     const v = this.view;
     this.time += dt;
     this.sky = skyAt(this.clock());
+    this.season = seasonAt(this.clock());
     const lively = v.mood === "playing" || v.mood === "premiere" || this.particles.length > 0 || this.time < this.wakeUntil;
     // Frame pacing: lively scenes animate at full rate; quiet ones only need a few frames a second.
     const frameEvery = lively ? 1 / 30 : 1 / 8;
@@ -706,7 +716,17 @@ export class Scene {
         this.blitMasked(S.CLOUD, x + ((cx + 28) % 60) - 6, y + 20, false);
       }
     }
-    if (sky.rain) {
+    if (sky.rain && this.season === "winter") {
+      // A denser flurry of falling flakes replaces the rain in winter.
+      const off = Math.floor(this.time * 6) % 12;
+      for (const [r, x0, x1] of this.windowInterior) {
+        for (let lx = x0; lx <= x1; lx++) {
+          const phase = (lx * 7 + r * 3 + off) % 12;
+          const column = (lx * 3 + Math.floor(r / 6)) % 5 === 0;
+          if (column && phase < 1) ctx.fillRect(x + lx, y + r, 1, 1);
+        }
+      }
+    } else if (sky.rain) {
       // Sparse slanted dashes marching downwards.
       const off = Math.floor(this.time * 14) % 9;
       for (const [r, x0, x1] of this.windowInterior) {
@@ -716,10 +736,91 @@ export class Scene {
           if (column && phase < 2) ctx.fillRect(x + lx, y + r, 1, 1);
         }
       }
+    } else {
+      this.drawSeasonAmbient(x, y);
     }
     // Hills and pines, then the frame on top.
     this.blitMasked(S.HILLS, x + 1, y + 26, false);
+    this.drawTreeDecor(x + 1, y + 26);
     this.blit(S.WINDOW, x, y);
+  }
+
+  /**
+   * A light touch on the two treetops for the season: snow caps in winter,
+   * a scattering of blossom dots in spring. Coordinates are hills-local
+   * (the hills art is blitted at `hx, hy`).
+   */
+  private drawTreeDecor(hx: number, hy: number): void {
+    if (this.season === "winter") {
+      const SNOW: ReadonlyArray<[number, number]> = [
+        [7, 1],
+        [6, 2],
+        [8, 2],
+        [5, 3],
+        [9, 3],
+        [22, 0],
+        [21, 1],
+        [23, 1],
+        [20, 4],
+        [26, 4],
+      ];
+      for (const [dx, dy] of SNOW) {
+        const gx = hx + dx;
+        const gy = hy + dy;
+        if (this.inWindow(gx - this.windowX, gy - this.windowY)) this.punch(gx, gy);
+      }
+    } else if (this.season === "spring") {
+      const BLOSSOM: ReadonlyArray<[number, number]> = [
+        [5, 2],
+        [9, 4],
+        [4, 5],
+        [21, 2],
+        [25, 3],
+        [20, 6],
+      ];
+      for (const [dx, dy] of BLOSSOM) {
+        const gx = hx + dx;
+        const gy = hy + dy;
+        if (this.inWindow(gx - this.windowX, gy - this.windowY)) this.punch(gx, gy);
+      }
+    }
+  }
+
+  /** Petals, leaves, drifting snow or fireflies, depending on the season. Skipped while it rains. */
+  private drawSeasonAmbient(x: number, y: number): void {
+    if (this.view.reduceMotion) return;
+    const ctx = this.bctx;
+    if (this.season === "summer") {
+      // Fireflies: a slow wander, blinking, only after dark.
+      if (this.sky.phase !== "night") return;
+      for (const [x0, y0, ph] of this.seasonBits) {
+        const on = Math.floor(this.time * 2 + ph * 0.7) % 3 !== 0;
+        if (!on) continue;
+        const lx = Math.round(x0 + Math.sin(this.time * 0.8 + ph) * 4);
+        const ly = Math.round(6 + (y0 % 20) + Math.cos(this.time * 0.6 + ph * 1.3) * 4);
+        if (this.inWindow(lx, ly)) this.punch(x + lx, y + ly);
+      }
+      return;
+    }
+    ctx.fillStyle = this.view.ink;
+    for (const [x0, y0, ph] of this.seasonBits) {
+      let lx: number;
+      let ly: number;
+      if (this.season === "winter") {
+        ly = (y0 + this.time * 3 + ph) % 34;
+        lx = Math.round(x0 + Math.sin(this.time * 1 + ph) * 1.5);
+      } else if (this.season === "spring") {
+        ly = (y0 + this.time * 4 + ph) % 34;
+        lx = Math.round(x0 + Math.sin(this.time * 1.5 + ph) * 3);
+      } else {
+        // autumn: falls faster, sways wider — more of a tumble.
+        ly = (y0 + this.time * 7 + ph) % 34;
+        lx = Math.round(x0 + Math.sin(this.time * 2 + ph) * 5);
+      }
+      const gly = Math.round(ly);
+      if (!this.inWindow(lx, gly)) continue;
+      ctx.fillRect(x + lx, y + gly, 1, 1);
+    }
   }
 
   /** Draws a paper-coloured pixel (a star in a dotted sky). */
