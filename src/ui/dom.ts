@@ -35,7 +35,7 @@ export function clear(el: Element): void {
   while (el.firstChild) el.removeChild(el.firstChild);
 }
 
-export function icon(name: "menu" | "close" | "pencil" | "play" | "stop" | "pin"): SVGElement {
+export function icon(name: "menu" | "close" | "pencil" | "play" | "stop" | "pin" | "expand"): SVGElement {
   const paths: Record<string, string> = {
     menu: '<path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
     close: '<path d="M1.5 1.5l8 8M9.5 1.5l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
@@ -43,6 +43,8 @@ export function icon(name: "menu" | "close" | "pencil" | "play" | "stop" | "pin"
     play: '<path d="M4 2.5v10l8-5z" fill="currentColor"/>',
     stop: '<rect x="3" y="3" width="9" height="9" rx="1" fill="currentColor"/>',
     pin: '<path d="M6 2h4l-.6 4 2.6 2v1H9v4l-1 1-1-1v-4H4V8l2.6-2z" fill="currentColor"/>',
+    expand:
+      '<path d="M9.5 2.5H13.5V6.5M6.5 13.5H2.5V9.5M13.5 2.5L9 7M2.5 13.5L7 9" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
   };
   const viewBox = name === "close" ? "0 0 11 11" : "0 0 16 16";
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");

@@ -1,36 +1,86 @@
 /**
- * The mini widget: a small, draggable stand-in for the full panel. It reuses
- * the same animated scene (cropped and zoomed via CSS onto the piano and
- * composer) so whatever they're up to — playing, dozing, celebrating —
- * still reads at a glance, behind a plain rectangular frame
- * with a slim progress bar along the bottom.
+ * The mini widget: a small, draggable stand-in for the full panel.
+ *
+ * It is a wide rectangle in two halves. The left half reuses the same
+ * animated scene (cropped and zoomed via CSS onto the piano, the composer
+ * and the window) so whatever they're up to — playing, dozing, celebrating —
+ * still reads at a glance. The crop stops short of the shelf and the
+ * armchair; that side of the room is given over instead to a small readout:
+ * money, what is on the stand, how far along it is, and a button back to
+ * the full panel.
  */
-import { h } from "./dom";
+import { formatMoney } from "../game/economy";
+import { progress, type GameState } from "../game/state";
+import { h, icon } from "./dom";
 
 const DRAG_THRESHOLD = 4;
 
 export interface MiniOverlay {
   el: HTMLElement;
   badge: HTMLElement;
-  setProgress(p: number): void;
-  setUnseen(on: boolean): void;
+  update(state: GameState, unseen: number): void;
 }
 
-/** Builds the progress bar + notice badge and appends them to `card`. */
-export function createMiniOverlay(card: HTMLElement): MiniOverlay {
+export interface MiniOptions {
+  /** The expand button was pressed; go back to the full panel. */
+  onExpand: () => void;
+}
+
+/** Builds the mini readout — money, piece, progress, expand — and appends it to `card`. */
+export function createMiniOverlay(card: HTMLElement, opts: MiniOptions): MiniOverlay {
+  const money = h("div", { class: "mini-money" }, "$0");
+  const expand = h(
+    "button",
+    { class: "mini-expand", "aria-label": "Open the full panel", title: "Open panel", onClick: () => opts.onExpand() },
+    icon("expand"),
+  );
+  const title = h("div", { class: "mini-title" }, "Empty stand");
   const fill = h("i");
   const bar = h("div", { class: "mini-bar", "aria-hidden": "true" }, fill);
+  const percent = h("div", { class: "mini-percent" }, "0%");
   const badge = h("div", { class: "mini-badge", "aria-hidden": "true" });
-  card.append(bar, badge);
+  const panel = h(
+    "div",
+    { class: "mini-panel" },
+    h("div", { class: "mini-row" }, money, expand),
+    title,
+    h("div", { class: "mini-row mini-progress" }, bar, percent),
+  );
+  card.append(panel, badge);
+
+  let lastMoney = -1;
+  let lastTitle = "";
+  let lastPercent = -1;
+  let lastUnseen: boolean | null = null;
+
   return {
-    el: bar,
+    el: panel,
     badge,
-    setProgress(p: number) {
-      const clamped = Math.max(0, Math.min(1, p));
-      fill.style.width = `${clamped * 100}%`;
-    },
-    setUnseen(on: boolean) {
-      badge.classList.toggle("is-on", on);
+    update(state: GameState, unseen: number) {
+      const m = Math.floor(state.money);
+      if (m !== lastMoney) {
+        lastMoney = m;
+        money.textContent = formatMoney(m);
+      }
+      const t = state.current ? state.current.title : "Empty stand";
+      if (t !== lastTitle) {
+        lastTitle = t;
+        title.textContent = t;
+        title.title = t;
+        title.classList.toggle("is-empty", !state.current);
+      }
+      const p = Math.max(0, Math.min(1, progress(state)));
+      const pct = Math.floor(p * 100);
+      if (pct !== lastPercent) {
+        lastPercent = pct;
+        fill.style.width = `${p * 100}%`;
+        percent.textContent = `${pct}%`;
+      }
+      const on = unseen > 0;
+      if (on !== lastUnseen) {
+        lastUnseen = on;
+        badge.classList.toggle("is-on", on);
+      }
     },
   };
 }

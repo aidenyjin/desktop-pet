@@ -114,7 +114,9 @@ try {
     await page.waitForTimeout(300);
     assert(await page.evaluate(() => document.querySelector(".card").classList.contains("is-mini")), "card is mini");
     const box = await page.locator(".card").boundingBox();
-    assert(Math.abs(box.width - 128) < 2, `mini width was ${box.width}`);
+    assert(Math.abs(box.width - 300) < 2, `mini width was ${box.width}`);
+    assert(Math.abs(box.height - 112) < 2, `mini height was ${box.height}`);
+    assert(await page.isVisible(".mini-expand"), "mini expand button visible");
     await page.mouse.move(box.x + 40, box.y + 40);
     await page.mouse.down();
     await page.mouse.move(box.x + 120, box.y + 160, { steps: 6 });
@@ -122,7 +124,7 @@ try {
     await page.waitForTimeout(150);
     const moved = await page.locator(".card").boundingBox();
     assert(Math.abs(moved.x - box.x) > 20 || Math.abs(moved.y - box.y) > 20, "mini widget actually moved");
-    await page.mouse.click(moved.x + 64, moved.y + 64);
+    await page.mouse.click(moved.x + 60, moved.y + 56);
     await page.waitForTimeout(400);
     assert(!(await page.evaluate(() => document.querySelector(".card").classList.contains("is-mini"))), "expanded back to full");
     assert(await page.isVisible(".hud"), "hud visible again");

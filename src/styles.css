@@ -36,11 +36,15 @@
   --margin-x: 18px;
   --margin-top: 8px;
   --margin-bottom: 34px;
-  /* Mini widget: a 140px window holds a 128px visible circle, 6px of
+  /* Mini widget: a 312×124 window holds a 300×112 visible card, 6px of
      margin on each side for its drop shadow — the same pattern as the
-     full panel's margin around its shadow. */
-  --mini: 128px;
+     full panel's margin around its shadow. The card is two halves: a
+     168×102 window onto the room on the left, the readout on the right. */
+  --mini-w: 300px;
+  --mini-h: 112px;
   --mini-margin: 6px;
+  --mini-scene-w: 168px;
+  --mini-scene-h: 102px;
   color-scheme: light;
 }
 :root[data-theme="night"] {
@@ -152,9 +156,9 @@ body.in-browser .card {
 .card.is-mini {
   left: var(--mini-margin);
   top: var(--mini-margin);
-  width: var(--mini);
-  height: var(--mini);
-  border-radius: 16px;
+  width: var(--mini-w);
+  height: var(--mini-h);
+  border-radius: 12px;
   cursor: grab;
 }
 .card.is-mini:active {
@@ -189,30 +193,88 @@ body.in-browser .card {
   border-color: var(--ink);
   color: var(--paper);
 }
+/* The left half of the mini widget is a window onto the room: scene pixels
+   x 2–113, y 20–88 (piano, candle, metronome, composer, clock and the
+   window — stopping short of the shelf and the armchair), drawn at 1.5×.
+   The canvas is already 2 CSS px per scene pixel, so --mini-zoom is 0.75.
+   clip-path runs in the element's own coordinates, before the transform,
+   and keeps the rest of the room out of the readout beside it. */
 .card.is-mini .scene {
   pointer-events: none;
-  /* Crops and zooms onto the composer; see ui/mini.ts for the numbers. */
   transform-origin: 0 0;
+  clip-path: inset(40px 132px 24px 4px);
   /* .scene is bottom-anchored and taller than the mini card, which pushes
-     its untransformed top edge up by (card height − scene height) = -72px;
-     folded into --mini-ty so the translate still lands on the composer. */
-  transform: translate(var(--mini-tx, -163px), var(--mini-ty, -120px)) scale(var(--mini-zoom, 2.1));
+     its untransformed top edge up by (card height − scene height) = -88px;
+     folded into --mini-ty so the translate still lands on the room. */
+  transform: translate(var(--mini-tx, 3px), var(--mini-ty, 64px)) scale(var(--mini-zoom, 0.75));
 }
-/* A slim rectangular progress bar along the bottom edge of the mini widget. */
-.mini-bar {
+.card.is-mini::after {
+  /* A hairline between the room and the readout. */
+  content: "";
   position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 8px;
+  top: 10px;
+  bottom: 10px;
+  left: calc(var(--mini-margin) + var(--mini-scene-w) + 5px);
+  width: 1px;
+  background: rgba(var(--ink-rgb), 0.18);
+  pointer-events: none;
+}
+
+/* The readout: money, the piece, its progress, and a way back to the panel. */
+.mini-panel {
+  position: absolute;
+  left: calc(var(--mini-margin) + var(--mini-scene-w) + 14px);
+  right: 12px;
+  top: 12px;
+  bottom: 12px;
+  display: none;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+}
+.card.is-mini .mini-panel {
+  display: flex;
+}
+.mini-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.mini-money {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.mini-title {
+  font-size: 10px;
+  line-height: 1.25;
+  opacity: 0.8;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.mini-title.is-empty {
+  font-style: italic;
+  opacity: 0.55;
+}
+.mini-progress {
+  gap: 7px;
+}
+.mini-percent {
+  font-size: 10px;
+  opacity: 0.65;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.mini-bar {
+  flex: 1;
   height: 4px;
   border-radius: 2px;
   background: rgba(var(--ink-rgb), 0.16);
   overflow: hidden;
-  pointer-events: none;
-  display: none;
-}
-.card.is-mini .mini-bar {
-  display: block;
 }
 .mini-bar > i {
   display: block;
@@ -222,10 +284,31 @@ body.in-browser .card {
   border-radius: inherit;
   transition: width 240ms ease-out;
 }
+.mini-expand {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(var(--ink-rgb), 0.35);
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(var(--ink-rgb), 0.7);
+  cursor: pointer;
+}
+.mini-expand:hover {
+  background: rgba(var(--ink-rgb), 0.1);
+  color: var(--ink);
+}
+.mini-expand svg {
+  width: 11px;
+  height: 11px;
+}
 .mini-badge {
   position: absolute;
   top: 8px;
-  right: 8px;
+  left: 8px;
   width: 9px;
   height: 9px;
   border-radius: 50%;
@@ -233,7 +316,7 @@ body.in-browser .card {
   box-shadow: 0 0 0 2px var(--paper);
   display: none;
 }
-.mini-badge.is-on {
+.card.is-mini .mini-badge.is-on {
   display: block;
 }
 

@@ -4,7 +4,7 @@ import type { Bridge, Permission } from "./bridge";
 import { Engine } from "./engine";
 import { formatMoney } from "./game/economy";
 import { generateMelody, pentatonic, rootMidi } from "./game/melody";
-import { dismissNotice, progress, newGame, repairPiano, setSettings, startPiece, type GameEvent, type GameState, type Theme, type Work } from "./game/state";
+import { dismissNotice, newGame, repairPiano, setSettings, startPiece, type GameEvent, type GameState, type Theme, type Work } from "./game/state";
 import { Scene } from "./scene/scene";
 import { GameStore } from "./store";
 import { h, icon } from "./ui/dom";
@@ -79,7 +79,7 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
       if (work) listen(work, () => {});
     },
   });
-  const mini = createMiniOverlay(card);
+  const mini = createMiniOverlay(card, { onExpand: () => exitMini() });
 
   /** Browser fallback only: positions `card` via inline styles, or clears them to fall back to its default CSS position. */
   function applyBrowserPosition(pos: { x: number; y: number } | null): void {
@@ -126,7 +126,8 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
   // The mini widget: the whole card is the drag/click surface while shrunk.
   attachDrag(card, card, {
     isTauri: bridge.isTauri,
-    enabled: () => card.classList.contains("is-mini"),
+    // The whole card drags, except the expand button, which is a real button.
+    enabled: (t) => card.classList.contains("is-mini") && !(t instanceof Element && t.closest(".mini-expand")),
     startWindowDrag: () => bridge.startWindowDrag(),
     getWindowPosition: () => bridge.getWindowPosition(),
     onClick: exitMini,
@@ -220,8 +221,7 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
   let lastSettingsJson = "";
   const render = (s: GameState, prev?: GameState) => {
     hud.update(s, store.unseen());
-    mini.setProgress(progress(s));
-    mini.setUnseen(store.unseen() > 0);
+    mini.update(s, store.unseen());
     pinToggle.setAttribute("aria-pressed", String(s.settings.pinned));
     const badge = store.unseen() > 0;
     if (badge !== lastBadge) {
