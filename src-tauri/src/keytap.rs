@@ -80,12 +80,61 @@ mod imp {
         fn CGEventTapEnable(tap: core_foundation::mach_port::CFMachPortRef, enable: bool);
     }
 
+    /// Appends a line to ~/Library/Logs/Sonatina/keytap.log. Only for
+    /// diagnosing why the system-wide tap will not start; never logs keys.
+    pub fn dlog(msg: &str) {
+        use std::io::Write;
+        let Some(home) = std::env::var_os("HOME") else { return };
+        let dir = std::path::Path::new(&home).join("Library/Logs/Sonatina");
+        if std::fs::create_dir_all(&dir).is_err() {
+            return;
+        }
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(dir.join("keytap.log"))
+        {
+            let t = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let _ = writeln!(f, "[{t}] pid={} {msg}", std::process::id());
+        }
+    }
+
     pub fn permission() -> Permission {
         // Available since macOS 10.15; we require 12+.
-        if unsafe { CGPreflightListenEventAccess() } {
+        let raw = unsafe { CGPreflightListenEventAccess() };
+        dlog(&format!(
+            "CGPreflightListenEventAccess -> {raw} (exe={:?})",
+            std::env::current_exe().unwrap_or_default()
+        ));
+        if raw {
             Permission::Granted
         } else {
             Permission::Denied
+        }
+    }
+
+    /// `CGPreflightListenEventAccess` answers from a per-process cache that
+    /// macOS populates once and then never refreshes, so it keeps saying
+    /// "denied" after the switch is flipped in System Settings. Actually
+    /// creating the tap is the only authoritative check, so callers use this
+    /// instead: it reports granted whenever the tap is (or can be) running.
+    pub fn effective_permission(counter: &Arc<KeyCounter>) -> Permission {
+        if counter.is_running() {
+            return Permission::Granted;
+        }
+        if permission() == Permission::Granted {
+            return Permission::Granted;
+        }
+        // Preflight said no — try anyway; it may be a stale cached answer.
+        match start(counter.clone()) {
+            Ok(()) if counter.is_running() => {
+                dlog("preflight said denied but the tap started: granted after all");
+                Permission::Granted
+            }
+            _ => Permission::Denied,
         }
     }
 
@@ -126,6 +175,10 @@ mod imp {
                     move |_proxy, kind, event| {
                         match kind {
                             CGEventType::KeyDown => {
+                                static FIRST: AtomicBool = AtomicBool::new(true);
+                                if FIRST.swap(false, Ordering::Relaxed) {
+                                    dlog("first KeyDown event received by tap");
+                                }
                                 // Holding a key down produces auto-repeat events;
                                 // those are not typing.
                                 if event.get_integer_value_field(EventField::KEYBOARD_EVENT_AUTOREPEAT)
@@ -148,8 +201,12 @@ mod imp {
                 );
 
                 let tap = match tap {
-                    Ok(t) => t,
+                    Ok(t) => {
+                        dlog("CGEventTapCreate -> ok");
+                        t
+                    }
                     Err(()) => {
+                        dlog("CGEventTapCreate -> FAILED (returned null)");
                         let _ = tx.send(Err("event tap could not be created".into()));
                         return;
                     }
@@ -169,8 +226,10 @@ mod imp {
                 CFRunLoop::get_current().add_source(&source, unsafe { kCFRunLoopCommonModes });
                 tap.enable();
                 thread_counter.running.store(true, Ordering::Relaxed);
+                dlog("tap installed, entering run loop");
                 let _ = tx.send(Ok(()));
                 CFRunLoop::run_current();
+                dlog("run loop exited");
                 // Only reached if the run loop is stopped, which we never do.
                 thread_counter.running.store(false, Ordering::Relaxed);
                 drop(tap);
@@ -194,6 +253,9 @@ mod imp {
     pub fn permission() -> Permission {
         Permission::Unsupported
     }
+    pub fn effective_permission(_counter: &Arc<KeyCounter>) -> Permission {
+        Permission::Unsupported
+    }
     pub fn request_permission() -> bool {
         false
     }
@@ -203,4 +265,4 @@ mod imp {
     pub fn open_settings() {}
 }
 
-pub use imp::{open_settings, permission, request_permission, start};
+pub use imp::{effective_permission, open_settings, request_permission, start};

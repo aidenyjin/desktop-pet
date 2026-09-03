@@ -58,8 +58,8 @@ fn add_local_keys(app: State<'_, App>, n: u64) -> u64 {
 }
 
 #[tauri::command]
-fn input_permission() -> &'static str {
-    keytap::permission().as_str()
+fn input_permission(app: State<'_, App>) -> &'static str {
+    keytap::effective_permission(&app.keys).as_str()
 }
 
 #[tauri::command]
@@ -375,10 +375,17 @@ pub fn run() {
             }
 
             // Start counting right away if permission was granted earlier.
-            if keytap::permission() == keytap::Permission::Granted {
-                if let Err(e) = keytap::start(keys.clone()) {
-                    log::warn!("key listener: {e}");
-                }
+            // Always *attempt* the tap: the preflight check answers from a
+            // stale per-process cache and can say "denied" for an app the
+            // user has already switched on.
+            if keytap::effective_permission(&keys) != keytap::Permission::Granted {
+                // Registers the app with TCC so it appears (and can be switched
+                // on) in System Settings → Input Monitoring. macOS shows the
+                // prompt only for an identity it has not asked about before;
+                // afterwards this just reports the current state.
+                keytap::request_permission();
+                keytap::effective_permission(&keys);
+                log::info!("key listener not started: input monitoring not granted");
             }
 
             // Periodic ledger flush so a crash can lose at most a few seconds.
