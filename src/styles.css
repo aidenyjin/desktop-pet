@@ -172,21 +172,29 @@ body.in-browser .card {
   display: none;
 }
 
-/* A small pin beside the menu button, top-right corner. */
+/* Small icon buttons beside the menu button, top-right corner: shrink to the
+   mini widget, and the pin that keeps the panel open. Quieter than the menu
+   button itself so the corner does not turn into a row of loud controls. */
 .hud-right {
   display: flex;
   align-items: center;
   gap: 6px;
 }
-.icon-btn.pin-toggle {
+.icon-btn.pin-toggle,
+.icon-btn.shrink-toggle {
   width: 24px;
   height: 24px;
   border-color: rgba(var(--ink-rgb), 0.55);
   color: rgba(var(--ink-rgb), 0.55);
 }
-.pin-toggle svg {
+.pin-toggle svg,
+.shrink-toggle svg {
   width: 11px;
   height: 11px;
+}
+.icon-btn.shrink-toggle:hover {
+  border-color: var(--ink);
+  color: var(--ink);
 }
 .pin-toggle[aria-pressed="true"] {
   background: var(--ink);

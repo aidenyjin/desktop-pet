@@ -99,11 +99,18 @@ piece's key; you can listen to a finished work in the repertoire, and
 
 Three small systems round out the loop:
 
-**Mini mode.** The panel can shrink to a small round, draggable widget — a
-loose crop on the composer, with a thin progress ring around the edge — that
-sits on the desktop instead of tucking away under the menu bar icon. It
-doesn't hide on blur (that would defeat the point of a widget you leave
-out), remembers where you left it, and a click expands it back. The *full*
+**Mini mode.** The panel can shrink to a small, wide, draggable widget that
+sits on the desktop instead of tucking away under the menu bar icon. It is
+two halves: a window onto the room on the left (the piano, the composer and
+the window, cropped short of the shelf and the armchair) and a readout on
+the right — money, what is on the stand, its progress, and a button back to
+the full panel. It doesn't hide on blur (that would defeat the point of a
+widget you leave out), remembers where you left it, and a click anywhere
+expands it back.
+
+Getting there is an icon in the panel's top-right corner rather than a menu
+entry, mirroring the expand button on the widget itself, so the way out and
+the way back are the same pair of arrows in the same corner. The *full*
 panel is draggable too — grab its header bar — and, once moved, stays put at
 that spot on future opens instead of re-docking under the tray icon. On
 macOS both hand off to the OS window manager (`startDragging`), reading the

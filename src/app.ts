@@ -158,6 +158,20 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
     },
     icon("pin"),
   );
+  // Shrink to the mini widget. An icon rather than a menu entry: it pairs
+  // with the expand button on the mini widget itself, so the way out and the
+  // way back sit in the same corner and read as one pair.
+  const shrinkToggle = h(
+    "button",
+    {
+      class: "icon-btn shrink-toggle",
+      "aria-label": "Shrink to the mini widget",
+      title: "Shrink",
+      onClick: () => enterMini(),
+    },
+    icon("shrink"),
+  );
+  hud.rightSlot.prepend(shrinkToggle);
   hud.rightSlot.prepend(pinToggle);
 
   const menuEntries = (): MenuEntry[] => {
@@ -173,8 +187,6 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
         disabled: !canRetakeTypingTest(s),
         onSelect: () => openTypingTest(app),
       },
-      "separator",
-      { label: "Shrink", checked: s.settings.mini, onSelect: () => (s.settings.mini ? exitMini() : enterMini()) },
       "separator",
       {
         label: "Start over…",

@@ -109,8 +109,7 @@ try {
   });
 
   await step("mini mode shrinks, drags, and expands back", async () => {
-    await page.click(".icon-btn");
-    await page.click("text=Shrink");
+    await page.click(".shrink-toggle");
     await page.waitForTimeout(300);
     assert(await page.evaluate(() => document.querySelector(".card").classList.contains("is-mini")), "card is mini");
     const box = await page.locator(".card").boundingBox();
