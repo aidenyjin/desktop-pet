@@ -32,7 +32,7 @@ That builds the app for your Mac and copies it to `/Applications`. Apps built lo
 
 To hear you type in other apps, macOS asks to let Sonatina *receive keystrokes* (System Settings → Privacy & Security → **Input Monitoring**). Sonatina increments a counter and discards the event; **which keys you press is never recorded, stored or sent anywhere**. There is no network code in the app. If you'd rather not grant it, only typing inside the panel counts and the composer mostly naps.
 
-> Because the app is ad‑hoc signed, macOS ties the permission to the exact build. After updating, you may need to switch it on again.
+> Because the app is ad‑hoc signed by default, macOS ties the permission to the exact build (the designated requirement is pinned to the binary's hash). After a rebuild, System Settings may still show Sonatina toggled on from the old build while the new one is silently denied. Run `./scripts/setup-local-signing.sh` once to create a stable local signing identity, then build with `APPLE_SIGNING_IDENTITY="Sonatina Local Dev" npm run app:build` (or `app:dev`) — permission then survives rebuilds. Proper releases sign with a real Developer ID instead (see `.github/workflows/release.yml`).
 
 ## How it plays
 
