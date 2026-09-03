@@ -15,6 +15,8 @@ export interface HudActions {
 export class Hud {
   readonly el: HTMLElement;
   readonly menuButton: HTMLButtonElement;
+  /** Groups the menu button with anything else (e.g. the pin toggle) pinned to the top-right corner. */
+  readonly rightSlot: HTMLElement;
   private readonly money: HTMLElement;
   private readonly badge: HTMLElement;
   private readonly piece: HTMLElement;
@@ -25,6 +27,9 @@ export class Hud {
 
   private readonly status: HTMLElement;
   private lastStatusKey = "";
+  private timerText: HTMLElement | null = null;
+  private timerInterval: number | undefined;
+  private lastState: GameState | null = null;
 
   constructor(parent: HTMLElement, private readonly actions: HudActions) {
     this.money = h("div", { class: "money", "aria-label": "Money" }, "$0");
@@ -35,7 +40,8 @@ export class Hud {
       icon("menu"),
       this.badge,
     );
-    this.el = h("header", { class: "hud" }, this.money, this.menuButton);
+    this.rightSlot = h("div", { class: "hud-right" }, this.menuButton);
+    this.el = h("header", { class: "hud" }, this.money, this.rightSlot);
     this.piece = h("section", { class: "piece", "aria-label": "Current piece" });
     this.status = h("div", { class: "piece-status" });
     parent.append(this.el, this.piece);
@@ -49,6 +55,7 @@ export class Hud {
   }
 
   update(state: GameState, unseen: number): void {
+    this.lastState = state;
     const money = Math.floor(state.money);
     if (money !== this.lastMoney) {
       this.money.textContent = formatMoney(money);
@@ -69,11 +76,39 @@ export class Hud {
     // progress to show for it would silently never reach the screen.
     this.updateStatus(state);
 
+    const thinking = state.thinkingSince !== null;
     const cur = state.current;
-    const key = cur ? `${cur.id}|${cur.title}|${Math.floor(cur.notes)}|${cur.target}` : `none|${Math.floor(state.spareNotes)}`;
-    if (key === this.lastPieceKey) return;
+    const key = thinking ? "thinking" : cur ? `${cur.id}|${cur.title}|${Math.floor(cur.notes)}|${cur.target}` : `none|${Math.floor(state.spareNotes)}`;
+    if (key === this.lastPieceKey) {
+      if (thinking) this.refreshTimer(state);
+      return;
+    }
     const titleChanged = !cur || !this.lastPieceKey.startsWith(`${cur.id}|${cur.title}|`);
     this.lastPieceKey = key;
+
+    if (thinking) {
+      this.stopTimerInterval();
+      clear(this.piece);
+      const big = h("div", { class: "stopwatch-big" }, "0:00");
+      this.timerText = big;
+      append(this.piece, [
+        h(
+          "div",
+          { class: "stopwatch" },
+          h("span", { class: "stopwatch-icon" }, icon("think")),
+          big,
+          h("button", { class: "btn is-quiet stopwatch-stop", onClick: () => this.actions.onStopThinking() }, "Stop"),
+        ),
+        h("p", { class: "piece-hint" }, "Away from the piano, working it out."),
+        this.status,
+      ]);
+      this.refreshTimer(state);
+      this.timerInterval = window.setInterval(() => {
+        if (this.lastState) this.refreshTimer(this.lastState);
+      }, 500);
+      return;
+    }
+    this.stopTimerInterval();
 
     if (!cur) {
       clear(this.piece);
@@ -126,6 +161,22 @@ export class Hud {
       const fill = bar.firstElementChild as HTMLElement | null;
       if (fill) fill.style.width = `${Math.max(0, Math.min(100, p * 100))}%`;
     }
+  }
+
+  private stopTimerInterval(): void {
+    if (this.timerInterval !== undefined) {
+      window.clearInterval(this.timerInterval);
+      this.timerInterval = undefined;
+    }
+    this.timerText = null;
+  }
+
+  private refreshTimer(state: GameState): void {
+    if (!this.timerText) return;
+    const secs = Math.floor(currentInspirationSeconds(state));
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    this.timerText.textContent = `${m}:${String(s).padStart(2, "0")}`;
   }
 
   private updateStatus(state: GameState): void {

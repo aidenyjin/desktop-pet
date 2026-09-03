@@ -144,8 +144,9 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
     onDragEnd: persistPanelPosition,
   });
 
-  // A quick toggle for thinking mode, sitting in the scene by the piano —
-  // faster than opening the menu, and a visible cue whether it's on.
+  // A quick toggle for thinking mode, tucked in the scene's empty bottom-right
+  // corner (clear of the piano and composer) — faster than opening the menu,
+  // and a visible cue whether it's on.
   const thinkToggle = h(
     "button",
     {
@@ -159,6 +160,22 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
   );
   card.appendChild(thinkToggle);
 
+  // A small pin next to the menu button, top-right, to keep the panel open
+  // (replaces the old "Keep open" menu entry with something quicker to
+  // reach and glance at).
+  const pinToggle = h(
+    "button",
+    {
+      class: "icon-btn pin-toggle",
+      "aria-label": "Keep panel open",
+      "aria-pressed": String(store.get().settings.pinned),
+      title: "Keep open",
+      onClick: () => store.update((s) => setSettings(s, { pinned: !s.settings.pinned }), { immediate: true }),
+    },
+    icon("pin"),
+  );
+  hud.rightSlot.prepend(pinToggle);
+
   const menuEntries = (): MenuEntry[] => {
     const s = store.get();
     const entries: MenuEntry[] = [
@@ -167,7 +184,6 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
       { label: "Repertoire", onSelect: () => openRepertoire(app), badge: store.unseen() || undefined },
       { label: "Settings", onSelect: () => openSettings(app), hint: "⌘," },
       "separator",
-      { label: "Keep open", checked: s.settings.pinned, onSelect: () => store.update((st) => setSettings(st, { pinned: !st.settings.pinned }), { immediate: true }) },
       { label: "Shrink", checked: s.settings.mini, onSelect: () => (s.settings.mini ? exitMini() : enterMini()) },
       "separator",
       {
@@ -224,6 +240,7 @@ export async function createApp(root: HTMLElement, bridge: Bridge): Promise<AppC
     mini.setProgress(progress(s));
     mini.setUnseen(store.unseen() > 0);
     thinkToggle.setAttribute("aria-pressed", String(s.thinkingSince !== null));
+    pinToggle.setAttribute("aria-pressed", String(s.settings.pinned));
     const badge = store.unseen() > 0;
     if (badge !== lastBadge) {
       lastBadge = badge;

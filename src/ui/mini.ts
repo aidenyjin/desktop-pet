@@ -1,51 +1,33 @@
 /**
  * The mini widget: a small, draggable stand-in for the full panel. It reuses
- * the same animated scene (cropped and zoomed via CSS onto the composer) so
- * whatever the composer is up to — playing, thinking, dozing, celebrating —
- * still reads at a glance.
+ * the same animated scene (cropped and zoomed via CSS onto the piano and
+ * composer) so whatever they're up to — playing, thinking, dozing,
+ * celebrating — still reads at a glance, behind a plain rectangular frame
+ * with a slim progress bar along the bottom.
  */
 import { h } from "./dom";
 
-const RING_R = 52;
-const RING_CIRCUMFERENCE = 2 * Math.PI * RING_R;
 const DRAG_THRESHOLD = 4;
 
 export interface MiniOverlay {
-  el: SVGSVGElement;
+  el: HTMLElement;
   badge: HTMLElement;
   setProgress(p: number): void;
   setUnseen(on: boolean): void;
 }
 
-/** Builds the progress ring + notice badge and appends them to `card`. */
+/** Builds the progress bar + notice badge and appends them to `card`. */
 export function createMiniOverlay(card: HTMLElement): MiniOverlay {
-  const svgNs = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(svgNs, "svg") as unknown as SVGSVGElement;
-  svg.setAttribute("class", "mini-ring");
-  svg.setAttribute("viewBox", "0 0 128 128");
-  svg.setAttribute("aria-hidden", "true");
-  const track = document.createElementNS(svgNs, "circle");
-  track.setAttribute("class", "track");
-  track.setAttribute("cx", "64");
-  track.setAttribute("cy", "64");
-  track.setAttribute("r", String(RING_R));
-  const fill = document.createElementNS(svgNs, "circle");
-  fill.setAttribute("class", "fill");
-  fill.setAttribute("cx", "64");
-  fill.setAttribute("cy", "64");
-  fill.setAttribute("r", String(RING_R));
-  fill.setAttribute("transform", "rotate(-90 64 64)");
-  fill.setAttribute("stroke-dasharray", String(RING_CIRCUMFERENCE));
-  fill.setAttribute("stroke-dashoffset", String(RING_CIRCUMFERENCE));
-  svg.append(track, fill);
+  const fill = h("i");
+  const bar = h("div", { class: "mini-bar", "aria-hidden": "true" }, fill);
   const badge = h("div", { class: "mini-badge", "aria-hidden": "true" });
-  card.append(svg, badge);
+  card.append(bar, badge);
   return {
-    el: svg,
+    el: bar,
     badge,
     setProgress(p: number) {
       const clamped = Math.max(0, Math.min(1, p));
-      fill.setAttribute("stroke-dashoffset", String(RING_CIRCUMFERENCE * (1 - clamped)));
+      fill.style.width = `${clamped * 100}%`;
     },
     setUnseen(on: boolean) {
       badge.classList.toggle("is-on", on);

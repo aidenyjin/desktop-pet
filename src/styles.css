@@ -154,7 +154,7 @@ body.in-browser .card {
   top: var(--mini-margin);
   width: var(--mini);
   height: var(--mini);
-  border-radius: 50%;
+  border-radius: 16px;
   cursor: grab;
 }
 .card.is-mini:active {
@@ -164,18 +164,42 @@ body.in-browser .card {
 .card.is-mini .piece,
 .card.is-mini .modal-layer,
 .card.is-mini .toast,
-.card.is-mini .think-toggle {
+.card.is-mini .think-toggle,
+.card.is-mini .pin-toggle {
   display: none;
 }
 
+/* Bottom-right corner of the scene — clear of the piano, composer and cat. */
 .icon-btn.think-toggle {
   position: absolute;
-  left: 16px;
+  right: 16px;
   bottom: 16px;
   z-index: 5;
 }
 .think-toggle[aria-pressed="true"] {
   background: var(--ink);
+  color: var(--paper);
+}
+
+/* A small pin beside the menu button, top-right corner. */
+.hud-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.icon-btn.pin-toggle {
+  width: 24px;
+  height: 24px;
+  border-color: rgba(var(--ink-rgb), 0.55);
+  color: rgba(var(--ink-rgb), 0.55);
+}
+.pin-toggle svg {
+  width: 11px;
+  height: 11px;
+}
+.pin-toggle[aria-pressed="true"] {
+  background: var(--ink);
+  border-color: var(--ink);
   color: var(--paper);
 }
 .card.is-mini .scene {
@@ -187,34 +211,36 @@ body.in-browser .card {
      folded into --mini-ty so the translate still lands on the composer. */
   transform: translate(var(--mini-tx, -163px), var(--mini-ty, -120px)) scale(var(--mini-zoom, 2.1));
 }
-.mini-ring {
+/* A slim rectangular progress bar along the bottom edge of the mini widget. */
+.mini-bar {
   position: absolute;
-  inset: 0;
+  left: 10px;
+  right: 10px;
+  bottom: 8px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(var(--ink-rgb), 0.16);
+  overflow: hidden;
   pointer-events: none;
   display: none;
 }
-.card.is-mini .mini-ring {
+.card.is-mini .mini-bar {
   display: block;
 }
-.mini-ring circle {
-  fill: none;
-}
-.mini-ring .track {
-  stroke: rgba(var(--ink-rgb), 0.16);
-  stroke-width: 3;
-}
-.mini-ring .fill {
-  stroke: var(--ink);
-  stroke-width: 3;
-  stroke-linecap: round;
-  transition: stroke-dashoffset 240ms ease-out;
+.mini-bar > i {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: var(--ink);
+  border-radius: inherit;
+  transition: width 240ms ease-out;
 }
 .mini-badge {
   position: absolute;
-  top: 6px;
-  right: 10px;
-  width: 11px;
-  height: 11px;
+  top: 8px;
+  right: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background: var(--accent);
   box-shadow: 0 0 0 2px var(--paper);
@@ -399,6 +425,31 @@ body.in-browser .card {
 .piece-empty {
   margin-top: 6px;
   font-size: 14px;
+}
+.stopwatch {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.stopwatch-icon {
+  display: inline-flex;
+  opacity: 0.7;
+}
+.stopwatch-icon svg {
+  width: 18px;
+  height: 18px;
+}
+.stopwatch-big {
+  font-weight: 700;
+  font-size: 28px;
+  font-variant-numeric: tabular-nums lining-nums;
+  flex: 1;
+}
+.stopwatch-stop {
+  min-height: 26px;
+  padding: 2px 12px;
+  font-size: 12.5px;
 }
 .piece-empty p {
   margin: 0 0 10px;

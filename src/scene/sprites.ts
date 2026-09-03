@@ -419,6 +419,90 @@ export const STOOL = sprite([
   "..#..........#....",
 ]);
 
+/** Standing legs, no stool — straight down to the floor. 18 × 14. */
+export const LEGS_STAND = sprite([
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+]);
+/** Mid-stride, left leg forward. 18 × 14. */
+export const LEGS_WALK_A = sprite([
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+  "...##.......##....",
+  "...##.......##....",
+  "...##.......##....",
+  "...##.......##....",
+  "...##.......##....",
+  "...##.......##....",
+  "...##.......##....",
+]);
+/** Mid-stride, right leg forward (mirror of LEGS_WALK_A). 18 × 14. */
+export const LEGS_WALK_B = sprite([
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+  "....##......##....",
+  ".....##....##.....",
+  ".....##....##.....",
+  ".....##....##.....",
+  ".....##....##.....",
+  ".....##....##.....",
+  ".....##....##.....",
+  ".....##....##.....",
+]);
+
+// ───────────────────────── doorway ─────────────────────────
+
+function doorFrame(w: number, h: number, filled: boolean): Sprite {
+  const rows: string[] = [];
+  for (let r = 0; r < h; r++) {
+    let row = "";
+    for (let c = 0; c < w; c++) {
+      const border = r === 0 || c === 0 || c === w - 1;
+      row += border || filled ? "#" : ".";
+    }
+    rows.push(row);
+  }
+  return sprite(rows);
+}
+/** A closed doorway to the next room. 12 × 44. */
+export const DOOR_CLOSED = doorFrame(12, 44, true);
+/** The same doorway, open — just the frame, dark inside. 12 × 44. */
+export const DOOR_OPEN = doorFrame(12, 44, false);
+
+/** A low kitchen counter. 22 × 12. */
+function counterSprite(w: number, topH: number, legH: number): Sprite {
+  const rows: string[] = [];
+  for (let r = 0; r < topH; r++) rows.push("#".repeat(w));
+  for (let r = 0; r < legH; r++) {
+    let row = "";
+    for (let c = 0; c < w; c++) row += c < 2 || c >= w - 2 ? "#" : ".";
+    rows.push(row);
+  }
+  return sprite(rows);
+}
+export const COUNTER = counterSprite(22, 3, 9);
+
 // ───────────────────────── small things ─────────────────────────
 
 export const NOTE_A = sprite([
@@ -439,6 +523,14 @@ export const NOTE_B = sprite([
   "###.##",
   ".#..#.",
 ]);
+/** A small mug, held while looking out the window. 5 × 5. */
+export const MUG = sprite([
+  ".###.",
+  "#...#",
+  "#...##",
+  "#...#",
+  ".###.",
+].map((r) => r.padEnd(6, ".")));
 export const Z_SMALL = sprite(["###", "..#", ".#.", "#..", "###"]);
 export const Z_BIG = sprite(["#####", "....#", "...#.", "..#..", ".#...", "#####"]);
 
