@@ -39,19 +39,27 @@ else
 
   openssl req -x509 -newkey rsa:2048 -keyout "$WORKDIR/key.pem" -out "$WORKDIR/cert.pem" \
     -days 3650 -nodes -subj "/CN=$CERT_NAME" \
-    -addext "extendedKeyUsage=codeSigning" \
+    -addext "extendedKeyUsage=critical,codeSigning" \
+    -addext "keyUsage=critical,digitalSignature" \
     -addext "basicConstraints=critical,CA:false"
 
+  # macOS's `security import` can't read the AES-256/SHA-256 PKCS#12 that
+  # OpenSSL 3 produces by default ("MAC verification failed"); force the
+  # legacy RC2/SHA1 encoding it expects. It also fails to verify the MAC on
+  # an empty-password p12 (encoding mismatch between OpenSSL and Apple's
+  # PKCS#12 reader), so use a throwaway password instead of an empty one.
+  P12_PASS="$(openssl rand -hex 16)"
   openssl pkcs12 -export -out "$WORKDIR/cert.p12" \
-    -inkey "$WORKDIR/key.pem" -in "$WORKDIR/cert.pem" -passout pass:
+    -inkey "$WORKDIR/key.pem" -in "$WORKDIR/cert.pem" -passout "pass:$P12_PASS" \
+    -certpbe PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg SHA1
 
-  security import "$WORKDIR/cert.p12" -k "$KEYCHAIN" -P "" -T /usr/bin/codesign -A
+  security import "$WORKDIR/cert.p12" -k "$KEYCHAIN" -P "$P12_PASS" -T /usr/bin/codesign -A
 
   # Let codesign use it without a per-invocation keychain prompt.
   security set-key-partition-list -S apple-tool:,apple: -s -k "" "$KEYCHAIN" >/dev/null 2>&1 || true
 
   echo "Trusting \"$CERT_NAME\" for code signing (you'll be prompted for your password)..."
-  security add-trusted-cert -r trustAsRoot -p codeSign -k "$KEYCHAIN" "$WORKDIR/cert.pem"
+  security add-trusted-cert -r trustRoot -p codeSign -k "$KEYCHAIN" "$WORKDIR/cert.pem"
 
   echo "Created and trusted \"$CERT_NAME\"."
 fi
